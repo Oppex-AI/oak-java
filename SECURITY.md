@@ -5,7 +5,7 @@ systems. We take reports about it seriously.
 
 ## Reporting a vulnerability
 
-Email **security@oppex.ai** with enough detail to reproduce. Please do not open a public issue for
+Email **support@oppex.ai** with enough detail to reproduce. Please do not open a public issue for
 anything exploitable.
 
 We will acknowledge within three working days and keep you updated until it's resolved.
