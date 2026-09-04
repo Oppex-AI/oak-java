@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>ai.oppex.adk</groupId>
+    <artifactId>oppex-adk-tools-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>oppex-adk-tools-server</artifactId>
+  <name>Oppex ADK Tools :: Server</name>
+  <description>
+    A ready-to-run service around the core jar, for teams who would rather not build their own.
+    Quarkus. If you already have a service to host the agent in, depend on oppex-adk-tools
+    directly instead of this.
+  </description>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>${quarkus.platform.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>ai.oppex.adk</groupId>
+      <artifactId>oppex-adk-tools</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- The AWS SDK is optional in the core, so it does not come through transitively.
+         This module wants the built-in AWS capabilities, so it asks for it explicitly. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>autoscaling</artifactId>
+    </dependency>
+
+    <!-- CDI and configuration only. No quarkus-rest: this service listens on nothing.
+         Every connection it uses is one it opened itself, outbound. -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-arc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-config-yaml</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-maven-plugin</artifactId>
+        <version>${quarkus.platform.version}</version>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+            <goals>
+              <goal>build</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

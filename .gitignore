@@ -1,0 +1,28 @@
+# ── Local credentials — NEVER commit ────────────────────────────────────────
+# The agent stores its Oppex API key encrypted on disk. These patterns exist
+# before the files do, deliberately: this repo is intended to be public, and
+# git history is permanent, so a key committed once is exposed forever.
+*.oppex-credentials
+oppex-credentials*
+config/local.*
+**/application-local.properties
+*.pem
+*.key
+
+# ── Java / Maven ───────────────────────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+dependency-reduced-pom.xml
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# ── OS ─────────────────────────────────────────────────────────────────────
+.DS_Store
