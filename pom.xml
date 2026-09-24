@@ -9,12 +9,12 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>Oppex ADK Tools</name>
+  <name>OAK Tools</name>
   <description>
-    Run Oppex runbook steps on your own infrastructure. The core library is framework-free and
-    holds no cloud credentials of its own; you decide what it is allowed to do.
+    Run runbook steps on your own infrastructure. The core library is framework-free and holds no
+    cloud credentials of its own; you decide what it is allowed to do.
   </description>
-  <url>https://github.com/Oppex-AI/oak-tools-java</url>
+  <url>https://github.com/Oppex-AI/oak-java</url>
 
   <licenses>
     <license>
@@ -22,6 +22,15 @@
       <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
     </license>
   </licenses>
+
+  <!-- Published to GitHub Packages. Consumers add this repo plus a settings.xml server 'github'
+       (a PAT with read:packages). Local dev needs none of this: `mvn install` uses ~/.m2. -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <url>https://maven.pkg.github.com/Oppex-AI/oak-java</url>
+    </repository>
+  </distributionManagement>
 
   <modules>
     <module>oak-tools</module>
