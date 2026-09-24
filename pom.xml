@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>ai.oppex.adk</groupId>
-  <artifactId>oppex-adk-tools-parent</artifactId>
+  <groupId>ai.oppex</groupId>
+  <artifactId>oak-tools-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
@@ -14,7 +14,7 @@
     Run Oppex runbook steps on your own infrastructure. The core library is framework-free and
     holds no cloud credentials of its own; you decide what it is allowed to do.
   </description>
-  <url>https://github.com/Oppex-AI/oppex-adk-tools-java</url>
+  <url>https://github.com/Oppex-AI/oak-tools-java</url>
 
   <licenses>
     <license>
@@ -24,8 +24,8 @@
   </licenses>
 
   <modules>
-    <module>oppex-adk-tools</module>
-    <module>oppex-adk-tools-server</module>
+    <module>oak-tools</module>
+    <module>oak-service</module>
   </modules>
 
   <properties>

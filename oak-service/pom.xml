@@ -5,16 +5,16 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>ai.oppex.adk</groupId>
-    <artifactId>oppex-adk-tools-parent</artifactId>
+    <groupId>ai.oppex</groupId>
+    <artifactId>oak-tools-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>oppex-adk-tools-server</artifactId>
+  <artifactId>oak-service</artifactId>
   <name>Oppex ADK Tools :: Server</name>
   <description>
     A ready-to-run service around the core jar, for teams who would rather not build their own.
-    Quarkus. If you already have a service to host the agent in, depend on oppex-adk-tools
+    Quarkus. If you already have a service to host the agent in, depend on oak-tools
     directly instead of this.
   </description>
 
@@ -32,8 +32,8 @@
 
   <dependencies>
     <dependency>
-      <groupId>ai.oppex.adk</groupId>
-      <artifactId>oppex-adk-tools</artifactId>
+      <groupId>ai.oppex</groupId>
+      <artifactId>oak-tools</artifactId>
       <version>${project.version}</version>
     </dependency>
 

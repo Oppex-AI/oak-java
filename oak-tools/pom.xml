@@ -5,17 +5,17 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>ai.oppex.adk</groupId>
-    <artifactId>oppex-adk-tools-parent</artifactId>
+    <groupId>ai.oppex</groupId>
+    <artifactId>oak-tools-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>oppex-adk-tools</artifactId>
+  <artifactId>oak-tools</artifactId>
   <name>Oppex ADK Tools :: Core</name>
   <description>
     Framework-free core. Tool registry, the Oppex connection (WebSocket with an HTTP polling
     fallback), and the built-in capabilities. Wrap this in a service of your own shape, or use
-    oppex-adk-tools-server if you would rather not.
+    oak-service if you would rather not.
   </description>
 
   <dependencies>
