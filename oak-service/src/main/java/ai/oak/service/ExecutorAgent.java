@@ -62,6 +62,7 @@ public class ExecutorAgent {
 
     void onStart(@Observes final StartupEvent event) {
         registry = buildRegistry();
+        status.wired(registry.all().stream().map(Tool::capability).toList());
 
         final String baseUrl = config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null);
         final String apiKey = config.platform().apiKey().filter(k -> !k.isBlank()).orElse(null);
@@ -125,8 +126,7 @@ public class ExecutorAgent {
                 .toList();
         try {
             client.register(new ToolServiceRegistrationRequest(config.service().name(), config.service().version(), declared));
-            status.connected(config.platform().name(), baseUrl,
-                    declared.stream().map(CapabilityDeclaration::capability).toList());
+            status.connected(config.platform().name(), baseUrl);
             log.info("Registered with {}: {} capabilities declared", config.platform().name(), declared.size());
             return true;
         } catch (IOException | InterruptedException e) {

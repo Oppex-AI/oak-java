@@ -38,8 +38,6 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- CDI and configuration only. No quarkus-rest: this service listens on nothing.
-         Every connection it uses is one it opened itself, outbound. -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-arc</artifactId>
@@ -47,6 +45,18 @@
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-config-yaml</artifactId>
+    </dependency>
+
+    <!-- The management UI: a small JSON status endpoint plus a static page. This is the only thing
+         that listens; the executor's own traffic to the platform is all outbound. Bind it to
+         localhost in production if the host is shared. -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest-jackson</artifactId>
     </dependency>
 
     <!-- JSON for the tool-service client. The transport is java.net.http from the JDK; only the

@@ -32,11 +32,15 @@ public class AgentStatus {
     public record StepRecord(Instant at, Long workflowId, Long taskId, String capability, String status, String note) {
     }
 
-    public synchronized void connected(final String platformName, final String baseUrl, final List<String> advertised) {
+    /** The capabilities this service has wired and could run, set once the registry is built. */
+    public synchronized void wired(final List<String> advertised) {
+        this.advertised = List.copyOf(advertised);
+    }
+
+    public synchronized void connected(final String platformName, final String baseUrl) {
         this.connected = true;
         this.platformName = platformName;
         this.baseUrl = baseUrl;
-        this.advertised = List.copyOf(advertised);
         this.registeredAt = Instant.now();
         this.lastError = null;
     }
