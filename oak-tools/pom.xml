@@ -11,55 +11,19 @@
   </parent>
 
   <artifactId>oak-tools</artifactId>
-  <name>Oppex ADK Tools :: Core</name>
+  <name>OAK Tools :: Core</name>
   <description>
-    Framework-free core. Tool registry, the Oppex connection (WebSocket with an HTTP polling
-    fallback), and the built-in capabilities. Wrap this in a service of your own shape, or use
-    oak-service if you would rather not.
+    Framework-free core: the Tool contract, the ToolRegistry, and the generic AWS and Docker tools.
+    Plain JDK (Java 17), no external dependencies — it compiles on any consumer's JVM. The tools
+    render the command a step would run; execution and any remote transport live in a layer above.
   </description>
 
+  <!-- No compile dependencies on purpose. A Tool works on Map<String,Object> and builds a command
+       string; JSON, logging and any cloud SDK are a caller's concern, not the core's. -->
   <dependencies>
-    <!-- Jackson is the only hard third-party dependency of the transport itself. The WebSocket
-         client is java.net.http.WebSocket from the JDK, so no websocket library is needed. -->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-    </dependency>
-
-    <!-- API only. The core deliberately does NOT bind a logging implementation: it runs inside
-         someone else's process, and picking their logger for them is not ours to do. -->
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>${slf4j.version}</version>
-    </dependency>
-
-    <!-- AWS, for the built-in capabilities. Optional on purpose: a customer whose tools are all
-         their own, or who runs nowhere near AWS, should not be forced to ship ~10MB of SDK.
-         ToolRegistry skips a capability whose classes are absent rather than failing to start. -->
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>autoscaling</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>ec2</artifactId>
-      <optional>true</optional>
-    </dependency>
-
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- Test scope only. The core ships no logging implementation on purpose, so without this the
-         suite prints "No SLF4J providers were found" and swallows every log line the tests emit. -->
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-simple</artifactId>
-      <version>${slf4j.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -1,83 +1,42 @@
 package ai.oak.tools;
 
-import ai.oak.tools.protocol.CapabilityDeclaration;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * What this agent can do. The only place a capability name is resolved to code.
+ * A plain, framework-free catalog of {@link Tool}s keyed by capability.
  *
- * <p>Registration order is last-one-wins for a given name, which is what lets you override a
- * built-in with your own implementation simply by registering yours after it.
+ * <p><b>Last registration wins.</b> A layer (a platform, or a customer's) overrides a generic tool by
+ * registering its own under the same capability — the layered-tools model, where the core does the
+ * generic thing and a layer overrides only where its specifics matter. No CDI: a consumer builds one
+ * of these once (register the generic tools, then its own) and holds it.
  */
-public class ToolRegistry {
+public final class ToolRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
+    private final Map<String, Tool> byCapability = new LinkedHashMap<>();
 
-    private final Map<String, Capability> byName = new ConcurrentHashMap<>();
-
-    /** Registers a capability, replacing any previous one with the same name. */
-    public ToolRegistry register(Capability capability) {
-        if (capability == null) {
-            throw new IllegalArgumentException("capability must not be null");
-        }
-        final String name = capability.name();
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException(
-                    capability.getClass().getName() + " returned a blank name()");
-        }
-        final Capability previous = byName.put(name, capability);
-        if (previous != null) {
-            log.info("Capability {} re-registered: {} replaces {}", name,
-                    capability.getClass().getName(), previous.getClass().getName());
-        } else {
-            log.info("Capability registered: {} ({}, {})", name,
-                    capability.getClass().getSimpleName(), capability.permission());
-        }
+    public ToolRegistry register(final Tool tool) {
+        byCapability.put(tool.capability(), tool);
         return this;
     }
 
-    /**
-     * Registers a capability that may not be loadable, and says so rather than failing to start.
-     *
-     * <p>This exists because the AWS SDK is an <em>optional</em> dependency. A customer whose tools
-     * are all their own should not have to ship it, and the failure when it is absent is a
-     * {@link NoClassDefFoundError} at class-load time — an Error, not an Exception, so a plain
-     * try/catch on Exception would not hold it. Without this the agent would refuse to boot with a
-     * stack trace about a class the operator never asked for.
-     *
-     * @param supplier deferred construction, so the class is not touched until called
-     */
-    public ToolRegistry registerIfAvailable(String name, java.util.function.Supplier<Capability> supplier) {
-        try {
-            register(supplier.get());
-        } catch (NoClassDefFoundError | RuntimeException e) {
-            log.info("Capability {} not available, skipping ({}: {}). "
-                            + "Add the matching optional dependency if you want it.",
-                    name, e.getClass().getSimpleName(), e.getMessage());
-        }
-        return this;
+    public Optional<Tool> find(final String capability) {
+        return Optional.ofNullable(byCapability.get(capability));
     }
 
-    public Optional<Capability> find(String name) {
-        return Optional.ofNullable(byName.get(name));
+    public boolean has(final String capability) {
+        return byCapability.containsKey(capability);
     }
 
-    /** Everything registered, in a stable order, for the registration call. */
-    public List<CapabilityDeclaration> declarations() {
-        final Map<String, Capability> snapshot = new LinkedHashMap<>(byName);
-        final List<CapabilityDeclaration> out = new ArrayList<>(snapshot.size());
-        snapshot.forEach((name, cap) -> out.add(new CapabilityDeclaration(name, cap.permission())));
-        return out;
+    /** Every registered tool, in registration order (later overrides replace in place). */
+    public List<Tool> all() {
+        return List.copyOf(byCapability.values());
     }
 
-    public int size() {
-        return byName.size();
+    /** The command a capability would run, or empty when no registered tool provides it. */
+    public Optional<String> render(final String capability, final Map<String, Object> input) {
+        return find(capability).map(tool -> tool.render(input));
     }
 }

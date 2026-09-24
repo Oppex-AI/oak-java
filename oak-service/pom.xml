@@ -11,10 +11,11 @@
   </parent>
 
   <artifactId>oak-service</artifactId>
-  <name>Oppex ADK Tools :: Server</name>
+  <name>OAK Tools :: Service</name>
   <description>
-    A ready-to-run service around the core jar, for teams who would rather not build their own.
-    Quarkus. If you already have a service to host the agent in, depend on oak-tools
+    The customer-side executor around the core jar, for teams who would rather not build their own.
+    Quarkus. It registers with the orchestration platform, pulls steps, executes them via oak-tools,
+    and reports results. If you already have a service to host the tools in, depend on oak-tools
     directly instead of this.
   </description>
 
@@ -35,13 +36,6 @@
       <groupId>ai.oppex</groupId>
       <artifactId>oak-tools</artifactId>
       <version>${project.version}</version>
-    </dependency>
-
-    <!-- The AWS SDK is optional in the core, so it does not come through transitively.
-         This module wants the built-in AWS capabilities, so it asks for it explicitly. -->
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>autoscaling</artifactId>
     </dependency>
 
     <!-- CDI and configuration only. No quarkus-rest: this service listens on nothing.

@@ -1,22 +1,21 @@
 package ai.oak.tools;
 
 /**
- * How much damage a capability could do, declared by whoever wrote it.
+ * What a tool does to the system it touches.
  *
- * <p>This is <strong>your</strong> claim about <strong>your own</strong> tool. Oppex records it and
- * uses it for display and planning; it is not a security control, and nothing on the Oppex side can
- * verify it. A capability declared READ that deletes a database will delete the database. The
- * boundary that actually protects you is the IAM role, database grant, or credential you give this
- * process — not this enum.
+ * <p>It gates the "confirm before running a risky step" decision — a {@link #DESTRUCTIVE} step (and,
+ * by policy, {@link #WRITE}) is what a runbook pauses on for human confirmation. It is the tool
+ * author's declared claim about their own tool, useful for display, planning and that gate, and
+ * <b>never a security control on its own</b>.
  */
 public enum ToolPermission {
 
-    /** Reads state. Safe to run repeatedly, safe to run during an incident. */
+    /** Observes only — describe, list, get, read a metric. Safe to run without confirmation. */
     READ,
 
-    /** Changes state, reversibly. Scaling a group, restarting a process. */
+    /** Changes state reversibly — start/stop an instance, scale, restart. */
     WRITE,
 
-    /** Changes state in a way that cannot be undone. Deleting, terminating, dropping. */
+    /** Changes state irreversibly — delete, terminate, drop. Always confirm. */
     DESTRUCTIVE
 }
