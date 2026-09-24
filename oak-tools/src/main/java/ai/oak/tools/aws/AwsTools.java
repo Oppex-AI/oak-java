@@ -1,6 +1,12 @@
 package ai.oak.tools.aws;
 
 import ai.oak.tools.ToolRegistry;
+import ai.oak.tools.aws.cloudwatch.CloudWatchTools;
+import ai.oak.tools.aws.ec2.Ec2Tools;
+import ai.oak.tools.aws.elasticache.ElastiCacheTools;
+import ai.oak.tools.aws.msk.MskTools;
+import ai.oak.tools.aws.rds.RdsTools;
+import ai.oak.tools.aws.s3.S3Tools;
 
 /**
  * Registers every generic AWS tool into a {@link ToolRegistry} — EC2, RDS, CloudWatch, S3,
