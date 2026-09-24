@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Get an MSK cluster's bootstrap broker connection string. */
-public final class MskGetBootstrapBrokersTool implements Tool {
+public final class MskGetBootstrapBrokersTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class MskGetBootstrapBrokersTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("kafka", "get-bootstrap-brokers").required("--cluster-arn", input.get("clusterArn"), "<clusterArn>")
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

@@ -1,13 +1,13 @@
 package ai.oak.tools.docker;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read a container's logs ({@code docker logs [--tail N] <container>}). */
-public final class DockerLogsTool implements Tool {
+public final class DockerLogsTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,7 +30,7 @@ public final class DockerLogsTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
-        return Cli.docker("logs").opt("--tail", input.get("tail")).positional(input.get("container"), "<container>").build();
+    public Cli command(final Map<String, Object> input) {
+        return Cli.docker("logs").opt("--tail", input.get("tail")).positional(input.get("container"), "<container>");
     }
 }

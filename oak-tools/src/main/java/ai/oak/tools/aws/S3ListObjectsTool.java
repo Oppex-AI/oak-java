@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** List objects in an S3 bucket, optionally under a prefix. */
-public final class S3ListObjectsTool implements Tool {
+public final class S3ListObjectsTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class S3ListObjectsTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("s3api", "list-objects-v2").required("--bucket", input.get("bucket"), "<bucket>")
-                .opt("--prefix", input.get("prefix")).opt("--region", input.get("region")).build();
+                .opt("--prefix", input.get("prefix")).opt("--region", input.get("region"));
     }
 }

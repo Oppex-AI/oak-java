@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read RDS DB instances (state, endpoint, class), optionally scoped to one identifier. */
-public final class RdsDescribeDbInstancesTool implements Tool {
+public final class RdsDescribeDbInstancesTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class RdsDescribeDbInstancesTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("rds", "describe-db-instances").opt("--db-instance-identifier", input.get("dbInstanceIdentifier"))
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

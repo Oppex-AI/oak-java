@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Start a stopped RDS DB instance. */
-public final class RdsStartDbInstanceTool implements Tool {
+public final class RdsStartDbInstanceTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,9 +30,9 @@ public final class RdsStartDbInstanceTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("rds", "start-db-instance")
                 .required("--db-instance-identifier", input.get("dbInstanceIdentifier"), "<dbInstanceIdentifier>")
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read the EC2 instances, optionally scoped by ids or filters. */
-public final class Ec2DescribeInstancesTool implements Tool {
+public final class Ec2DescribeInstancesTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class Ec2DescribeInstancesTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("ec2", "describe-instances").optList("--instance-ids", input.get("instanceIds"))
-                .opt("--filters", input.get("filters")).opt("--region", input.get("region")).build();
+                .opt("--filters", input.get("filters")).opt("--region", input.get("region"));
     }
 }

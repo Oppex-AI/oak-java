@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read an S3 object's metadata / existence (size, last-modified, content-type). */
-public final class S3HeadObjectTool implements Tool {
+public final class S3HeadObjectTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class S3HeadObjectTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("s3api", "head-object").required("--bucket", input.get("bucket"), "<bucket>")
-                .required("--key", input.get("key"), "<key>").opt("--region", input.get("region")).build();
+                .required("--key", input.get("key"), "<key>").opt("--region", input.get("region"));
     }
 }

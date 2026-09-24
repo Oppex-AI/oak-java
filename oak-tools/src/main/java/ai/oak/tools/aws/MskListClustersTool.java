@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** List MSK (Kafka) clusters, optionally by name filter. */
-public final class MskListClustersTool implements Tool {
+public final class MskListClustersTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class MskListClustersTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("kafka", "list-clusters").opt("--cluster-name-filter", input.get("clusterNameFilter"))
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read recent RDS events (failovers, restarts, storage) for diagnosis. */
-public final class RdsDescribeEventsTool implements Tool {
+public final class RdsDescribeEventsTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class RdsDescribeEventsTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("rds", "describe-events").opt("--source-identifier", input.get("sourceIdentifier"))
-                .opt("--source-type", input.get("sourceType")).opt("--region", input.get("region")).build();
+                .opt("--source-type", input.get("sourceType")).opt("--region", input.get("region"));
     }
 }

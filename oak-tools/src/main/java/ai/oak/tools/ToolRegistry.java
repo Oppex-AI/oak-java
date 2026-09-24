@@ -39,4 +39,9 @@ public final class ToolRegistry {
     public Optional<String> render(final String capability, final Map<String, Object> input) {
         return find(capability).map(tool -> tool.render(input));
     }
+
+    /** Runs a capability and returns its outcome, or empty when no registered tool provides it. */
+    public Optional<ToolResult> execute(final String capability, final Map<String, Object> input) {
+        return find(capability).map(tool -> tool.execute(input));
+    }
 }

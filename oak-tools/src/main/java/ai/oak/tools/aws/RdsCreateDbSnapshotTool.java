@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Take a manual RDS DB snapshot (e.g. before a risky remediation). */
-public final class RdsCreateDbSnapshotTool implements Tool {
+public final class RdsCreateDbSnapshotTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,10 +30,10 @@ public final class RdsCreateDbSnapshotTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("rds", "create-db-snapshot")
                 .required("--db-instance-identifier", input.get("dbInstanceIdentifier"), "<dbInstanceIdentifier>")
                 .required("--db-snapshot-identifier", input.get("dbSnapshotIdentifier"), "<dbSnapshotIdentifier>")
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

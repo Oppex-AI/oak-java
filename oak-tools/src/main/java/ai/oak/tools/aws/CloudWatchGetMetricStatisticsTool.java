@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Read a CloudWatch metric's statistics over a window (e.g. CPU, connections). */
-public final class CloudWatchGetMetricStatisticsTool implements Tool {
+public final class CloudWatchGetMetricStatisticsTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,11 +30,11 @@ public final class CloudWatchGetMetricStatisticsTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("cloudwatch", "get-metric-statistics").required("--namespace", input.get("namespace"), "<namespace>")
                 .required("--metric-name", input.get("metricName"), "<metricName>").opt("--dimensions", input.get("dimensions"))
                 .opt("--start-time", input.get("startTime")).opt("--end-time", input.get("endTime"))
                 .opt("--period", input.get("period")).optList("--statistics", input.get("statistics"))
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

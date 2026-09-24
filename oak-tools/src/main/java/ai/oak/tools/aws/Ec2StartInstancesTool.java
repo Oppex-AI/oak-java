@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Start the given EC2 instances. */
-public final class Ec2StartInstancesTool implements Tool {
+public final class Ec2StartInstancesTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,8 +30,8 @@ public final class Ec2StartInstancesTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("ec2", "start-instances").required("--instance-ids", input.get("instanceIds"), "<instanceIds>")
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }

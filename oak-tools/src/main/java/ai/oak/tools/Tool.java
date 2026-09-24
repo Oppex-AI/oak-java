@@ -11,9 +11,12 @@ import java.util.Map;
  * concern the caller resolves, not something a Tool declares. Keep implementations dependency-free
  * (JDK only) so this module lifts into the open-source oak-java repo unchanged.
  *
- * <p>Today a Tool only <b>renders</b> the command it would run — the print/preview used to verify a
- * generated runbook before anything executes. A real {@code execute(...)} is layered on later without
- * changing this contract or a step's plan.
+ * <p>A Tool does two things from one definition: {@link #render} prints the command it would run — the
+ * preview used to verify a generated runbook before anything happens — and {@link #execute} actually
+ * runs it and reports the outcome. Both sides (platform and customer) call the same {@code execute},
+ * so their execution is identical by construction. Most tools are command-line tools; extend
+ * {@link CommandTool} to get both from a single command definition rather than implementing this
+ * interface directly.
  */
 public interface Tool {
 
@@ -38,4 +41,13 @@ public interface Tool {
      * command still reads as a template.
      */
     String render(Map<String, Object> input);
+
+    /**
+     * Actually run the work and report its outcome. Unlike {@link #render}, this touches the target.
+     *
+     * <p>It does not throw for a command that fails (a non-zero exit, a missing binary): those are
+     * outcomes carried in the {@link ToolResult} for the runbook to act on. It throws only for a
+     * genuine failure to attempt the work — e.g. an input that cannot be used to form the command.
+     */
+    ToolResult execute(Map<String, Object> input);
 }

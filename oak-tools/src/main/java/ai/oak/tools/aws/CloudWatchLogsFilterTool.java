@@ -1,13 +1,13 @@
 package ai.oak.tools.aws;
 
-import ai.oak.tools.Tool;
+import ai.oak.tools.CommandTool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.cli.Cli;
 import java.util.List;
 import java.util.Map;
 
 /** Search a CloudWatch Logs group for matching events ({@code aws logs filter-log-events}). */
-public final class CloudWatchLogsFilterTool implements Tool {
+public final class CloudWatchLogsFilterTool extends CommandTool {
 
     @Override
     public String capability() {
@@ -30,9 +30,9 @@ public final class CloudWatchLogsFilterTool implements Tool {
     }
 
     @Override
-    public String render(final Map<String, Object> input) {
+    public Cli command(final Map<String, Object> input) {
         return Cli.aws("logs", "filter-log-events").required("--log-group-name", input.get("logGroupName"), "<logGroupName>")
                 .opt("--filter-pattern", input.get("filterPattern")).opt("--start-time", input.get("startTime"))
-                .opt("--region", input.get("region")).build();
+                .opt("--region", input.get("region"));
     }
 }
