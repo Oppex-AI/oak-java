@@ -1,181 +1,194 @@
-# Oppex ADK Tools (Java)
+# OAK — Oppex Agentic Kit (Java)
 
-Run Oppex runbook steps on **your** infrastructure, using **your** credentials, inside a process
-**you** control.
+Run runbook steps on **your** infrastructure, using **your** credentials, inside a process **you**
+control.
 
-> **Status: early development.** The API will change. Not yet published to Maven Central.
+> **Status: early development.** The API will change. Not yet published to Maven Central (available
+> from GitHub Packages — see [Publishing](#publishing)).
+
+OAK is the open-source tools SDK for runbook automation. The tool code is a single implementation
+that runs on two sides — the orchestration platform's infrastructure and yours — and the platform's
+planner decides which running instance executes each step. This repo is that implementation, plus a
+small service you run to execute steps on your side. **You always call the platform; the platform
+never dials into your network.** The first supported platform is Oppex; it is a *configured* backend,
+not a hardcoded one.
 
 ## Why this exists
 
-Oppex automates operational runbooks. Most useful steps in a real runbook need production access —
-listing the instances behind an auto-scaling group, reading query logs off a database, checking
-which deploy went out before a spike.
-
-Handing that access to an outside company is not a reasonable thing to ask. So Oppex doesn't ask.
-Instead it sends you the *name* of a step, and this agent runs it locally against credentials that
-never leave your account.
+Most useful steps in a real runbook need production access — listing the instances behind an
+auto-scaling group, reading query logs off a database, restarting a container. Handing that access to
+an outside company is not a reasonable thing to ask. So OAK doesn't ask. The platform sends you the
+*name* of a step, and this service runs it locally against credentials that never leave your account.
 
 ## What it does, and what it will not do
-
-This is the part worth reading before you run anything.
 
 **It receives a name and some parameters.** A step looks like this on the wire:
 
 ```json
-{ "taskId": 57, "capability": "FIND_ASG", "input": { "serviceKey": "payment-service" } }
+{ "workflowId": 42, "taskId": 57, "capability": "AWS_EC2_START_INSTANCES",
+  "input": { "instanceIds": ["i-0abc"], "region": "us-west-2" } }
 ```
 
-**It never receives code.** Not a script, not a binary, not an expression to evaluate. The agent
-looks `FIND_ASG` up in its own registry of locally-compiled tools and runs your code. A name it
-does not implement is refused and reported back as a failure.
+**It never receives code.** Not a script, not a binary, not an expression to evaluate. The service
+looks the capability up in its own registry of locally-compiled tools and runs your code. A name it
+does not implement is refused and reported back as a failure. The worst thing the platform can ask
+this process to do is **something you compiled into it, with parameters you can validate** — and that
+holds even if the platform were compromised.
 
-That means the worst thing Oppex can ask this process to do is **something you compiled into it,
-with parameters you can validate**. That holds even if the Oppex platform were compromised.
-
-**It opens no ports.** Every connection is one this process makes outbound. Port-scan the host and
-you will find nothing listening. Oppex has no address for you and no way to reach you when this
-isn't running.
+**It opens no ports for the platform.** Every connection to the platform is one this process makes
+outbound. The one thing it does listen on is the local [management UI](#management-ui).
 
 **Its blast radius is the credential you give it.** The IAM role, database grant or token on this
 process is the real boundary. The `ToolPermission` labels (`READ`/`WRITE`/`DESTRUCTIVE`) are
-declarations for display and planning — they are not enforcement, and nothing on the Oppex side
-can verify them. Grant least privilege and treat the labels as documentation.
+declarations for display and planning — not enforcement, and nothing on the platform side can verify
+them. Grant least privilege and treat the labels as documentation.
+
+## Render and execute
+
+Every tool does two things from one definition:
+
+- **`render(input)`** builds the exact command it *would* run — a preview used to verify a generated
+  runbook before anything happens.
+- **`execute(input)`** actually runs it and returns a `ToolResult` (exit code, stdout, stderr).
+
+Both sides — platform and customer — call the same `execute`, so a step runs identically wherever it
+lands. Command-line tools extend `CommandTool` and define their command once; the preview and the
+real run can never drift apart. Execution is plain JDK `ProcessBuilder` (no shell, no cloud SDK), so
+the built-in tools invoke the `aws` and `docker` CLIs you already have, using *their* configured
+credentials.
 
 ## How it connects
 
-The agent dials out and keeps the connection open. Oppex then pushes steps down it.
+The service loops, dialling out every time:
 
 ```
-1. agent  ──▶  POST /v1/tools/register     here is what I can run
-2. agent  ──▶  POST /v1/tools/connect      returns a short-lived ticket
-3. agent  ──▶  opens a WebSocket
-4. Oppex  ──▶  pushes a step down it       ← Oppex initiates the work
-5. agent  ──▶  POST /v1/tools/steps/result what happened
+1. service ──▶ POST /v1/tools/register       here is what I can run
+2. service ──▶ GET  /v1/tools/steps/next      anything for me?  (poll; empty when idle)
+3. service      runs the tool locally          resolve capability → execute(input)
+4. service ──▶ POST /v1/tools/steps/result    what happened (SUCCESS / FAILED + output)
 ```
 
-**Why the connection stays open.** A firewall does not block incoming *data* — it blocks strangers
-*starting* conversations. That's why every web page you load works: you asked for it. So a
-connection your agent opens is permitted, and traffic flows both ways on it for as long as it
-lives. Oppex cannot open one to you, so if this closes there is no route for a step until the agent
-dials again.
+Authentication is one-directional: the service authenticates to the platform with a workspace API
+key (`X-API-KEY`); the platform has no address for you and no way to reach you when this isn't
+running. Polling is the baseline; a WebSocket push path is a later optimisation.
 
-If an outbound proxy inspects TLS and refuses the WebSocket upgrade, the agent **falls back to
-HTTP polling automatically** and says so in the log. Steps then arrive on a timer rather than
-instantly. Nothing else changes.
-
-## Run the server
-
-If you'd rather not write your own service:
+## Run the service
 
 ```bash
-export OPPEX_BASE_URL=https://api.oppex.example
-export OPPEX_API_KEY=...            # or use a credentials file, see below
-mvn -pl oppex-adk-tools-server quarkus:dev
+export OAK_PLATFORM_BASE_URL=https://api.oppex.example
+export OAK_PLATFORM_API_KEY=...
+mvn -pl oak-service quarkus:dev
 ```
 
-It listens on nothing, so there is no port to open and no health endpoint to expose.
+With no platform configured it still boots — it stays idle and says so, with every tool wired and
+ready. The only thing it listens on is the management UI.
 
-### Credentials
+### Management UI
 
-Prefer the encrypted file over an environment variable — a key in the environment shows up in
-process listings and diagnostic bundles.
+Open **http://localhost:8080/** for a read-only monitor: connection status and last-seen, the
+advertised capabilities, recent steps and their outcomes, and the effective config. It never shows
+the API key — only whether one is set. `GET /api/status` returns the same data as JSON. Bind it to
+localhost on a shared host with `OAK_UI_HOST=127.0.0.1`.
 
-```java
-CredentialStore.save(Path.of("/etc/oppex/agent.oppex-credentials"), apiKey, passphrase);
-```
+## Built-in tools
 
-```properties
-oppex.adk.credentials-file=/etc/oppex/agent.oppex-credentials
-```
+34 generic tools, each a command builder over the `aws` / `docker` CLIs:
 
-```bash
-export OPPEX_ADK_PASSPHRASE=...     # from your init system or secret manager
-```
+| Service | Capabilities |
+|---|---|
+| EC2 | describe instances, describe instance status, start, stop, reboot |
+| RDS | describe DB instances, describe events, start, stop, reboot, create snapshot |
+| CloudWatch | describe alarms, get metric statistics, logs filter, logs tail |
+| S3 | list buckets, list objects, head object, delete object |
+| ElastiCache | describe cache clusters, describe replication groups, describe events, reboot cache cluster |
+| MSK | list clusters, describe cluster, list nodes, get bootstrap brokers, reboot broker |
+| Docker | ps, inspect, logs, start, stop, restart |
 
-Be clear about what this buys: the agent must decrypt unattended, so the passphrase is reachable on
-the same host. **It does not protect against an attacker who already has the host.** What it does
-prevent is the key ending up in a backup, a support bundle, a screen share, or an accidental
-`git add` — and it keeps the ciphertext and the passphrase in different places.
+Turn a set off with `oak.tools.aws-enabled=false` / `oak.tools.docker-enabled=false` to advertise
+only your own tools.
 
 ## Add your own tool
 
-Implement one interface:
+Implement the `Tool` contract — `render` for the preview, `execute` for the real run:
 
 ```java
-public class CountPendingOrders implements Capability {
+public final class DiskUsageTool implements Tool {
 
-    public String name() { return "COUNT_PENDING_ORDERS"; }
+    public String capability()  { return "DISK_USAGE"; }
     public ToolPermission permission() { return ToolPermission.READ; }
+    public String description() { return "Disk usage for a path."; }
+    public List<String> inputKeys() { return List.of("path"); }
 
-    public Map<String, Object> execute(Map<String, Object> input) throws Exception {
-        try (var conn = dataSource.getConnection();
-             var st = conn.prepareStatement("select count(*) from orders where status = ?")) {
-            st.setString(1, (String) input.get("status"));      // never interpolate — this came from outside
-            var rs = st.executeQuery();
-            rs.next();
-            return Map.of("count", rs.getInt(1));
-        }
+    public String render(Map<String, Object> input) {
+        return "du -sh " + input.getOrDefault("path", "<path>");
+    }
+
+    public ToolResult execute(Map<String, Object> input) {
+        return CommandRunner.run(List.of("du", "-sh", String.valueOf(input.get("path"))));
     }
 }
 ```
 
-In the Quarkus server, annotate it `@ApplicationScoped` and it is picked up automatically. Using the
-core jar directly, `registry.register(new CountPendingOrders())`.
-
-Then reference `COUNT_PENDING_ORDERS` from a runbook step in Oppex.
+In `oak-service`, annotate it `@ApplicationScoped` and it is registered automatically (after the
+built-ins, so naming yours the same as a built-in overrides it). Using `oak-tools` directly, call
+`registry.register(new DiskUsageTool())`. Then reference `DISK_USAGE` from a runbook step.
 
 **Guidelines that matter:**
 
-- **Validate the input.** It arrived from outside your network. Treat it like an HTTP request body.
-- **Throw to fail.** The message reaches Oppex and the runbook decides what to do. Never swallow an
-  error and return an empty success — a step that lies about working is worse than one that fails,
-  because the runbook carries on regardless.
-- **Return facts, not prose.** `{"asgName": "payment-asg", "instanceCount": 4}` is useful to the
-  next step and to an LLM. `{"summary": "looks fine"}` is useful to neither.
-- **Assume it can run twice.** Steps can be retried.
-- **Set timeouts.** Several steps may run at once on a shared pool.
-
-## Built-in capabilities
-
-| Capability | Needs | Permission |
-|---|---|---|
-| `FIND_ASG` | `autoscaling:DescribeAutoScalingGroups` | `READ` |
-
-`FIND_ASG` matches on tags first (`Service`, `service`, `app`, `Application`, or one you name),
-then an exact group name, then a name containing the key. It returns **every** match with a
-`matchedBy` field rather than guessing — two groups matching `payment` is a real situation worth
-seeing, not a tie to break silently.
-
-The AWS SDK is an **optional** dependency of the core. If your tools are all your own, you don't
-have to ship it; the built-in is skipped with a log line rather than failing to start.
+- **Validate the input.** It arrived from outside your network. Treat it like an HTTP request body —
+  never interpolate a value into a shell string (that is why `execute` uses an argv, not a shell).
+- **A non-zero exit is a normal outcome**, reported as FAILED with its output. Reserve exceptions for
+  a genuine inability to attempt the work.
+- **Assume it can run twice.** Steps can be retried. **Set timeouts** — several steps may run at once.
 
 ## Modules
 
 | Module | Use it when |
 |---|---|
-| `oppex-adk-tools` | You have a service already, or want to build your own. Framework-free: plain Java, the JDK's HTTP and WebSocket clients, and Jackson. |
-| `oppex-adk-tools-server` | You want something to run. Quarkus. |
-
-Java 17, so it runs on the JVM you already have.
+| `oak-tools` | You have a service already, or want to build your own. Framework-free: plain JDK 17, no external dependencies. The `Tool` contract, `ToolRegistry`, and the generic AWS/Docker tools. |
+| `oak-service` | You want something to run. A Quarkus executor plus the management UI. |
 
 ## Configuration
 
+All under the `oak` prefix (`oak-service`):
+
 | Key | Default | |
 |---|---|---|
-| `oppex.adk.base-url` | — | Required. |
-| `oppex.adk.credentials-file` | — | Encrypted key file. Preferred. |
-| `oppex.adk.api-key` | — | Plain key. Use the file instead where you can. |
-| `oppex.adk.agent-name` | `oppex-adk-tools-server` | Keep stable across restarts — Oppex keys the registration on it. |
-| `oppex.adk.transport-mode` | `AUTO` | `AUTO`, `WEBSOCKET` (fail rather than degrade), `POLL`. |
-| `oppex.adk.poll-interval` | `10s` | Only used when polling. |
-| `oppex.adk.worker-threads` | `4` | Concurrent steps. |
-| `oppex.adk.aws-capabilities-enabled` | `true` | Register the built-ins. |
+| `oak.platform.name` | `oppex` | Which backend this is, for logs and the UI. |
+| `oak.platform.base-url` | — | The platform base URL. Absent → the executor stays idle. |
+| `oak.platform.api-key` | — | Workspace API key, sent as `X-API-KEY`. |
+| `oak.service.name` | `oak-service` | Reported at registration; keep it stable across restarts. |
+| `oak.service.version` | `0.1.0` | Reported at registration. |
+| `oak.poll.interval` | `10s` | How often to ask for the next step. |
+| `oak.poll.worker-threads` | `4` | Concurrent steps. |
+| `oak.tools.aws-enabled` | `true` | Advertise the built-in AWS tools. |
+| `oak.tools.docker-enabled` | `true` | Advertise the built-in Docker tools. |
 
 ## Build
 
 ```bash
-mvn clean install
+mvn clean install       # build + install ai.oppex:oak-tools into ~/.m2
+mvn verify              # + Spotless (formatting & Apache header) and Checkstyle
+mvn spotless:apply      # auto-fix formatting and headers before committing
 ```
+
+The project uses the shared Oppex Eclipse formatter (`config/eclipse-java-formatter.xml`); Spotless
+enforces it and the Apache 2.0 header on every source file, and Checkstyle reports on the Oppex
+ruleset.
+
+## Publishing
+
+Published to GitHub Packages as **`ai.oppex:oak-tools`**. Consumers add the repository and a
+`~/.m2/settings.xml` server `github` (a PAT with `read:packages`):
+
+```xml
+<repository>
+  <id>github</id>
+  <url>https://maven.pkg.github.com/Oppex-AI/oak-java</url>
+</repository>
+```
+
+For local development no publish is needed — `mvn install` puts it in `~/.m2`.
 
 ## Licence
 
