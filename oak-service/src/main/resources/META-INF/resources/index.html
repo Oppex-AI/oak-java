@@ -96,6 +96,23 @@
     </div>
 
     <div class="card" style="margin-bottom:20px">
+      <h2>Configure connection</h2>
+      <div class="kv" style="align-items:center">
+        <label for="inBaseUrl">Base URL</label>
+        <input id="inBaseUrl" class="mono" placeholder="https://nightly.oppex.ai"
+               style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+        <label for="inApiKey">API key</label>
+        <input id="inApiKey" type="password" placeholder="leave blank to keep current"
+               style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+        <span></span>
+        <button id="saveBtn"
+                style="justify-self:start;padding:7px 16px;border:0;border-radius:6px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">
+          Save &amp; reconnect</button>
+      </div>
+      <div id="saveMsg" class="sub" style="margin:12px 0 0"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
       <h2>Advertised capabilities (<span id="capCount">0</span>)</h2>
       <div class="chips" id="caps"><span class="empty">none</span></div>
     </div>
@@ -139,6 +156,7 @@
 
       $("platform").textContent = d.platformName || "—";
       $("baseUrl").textContent = d.baseUrl || "not configured";
+      if (document.activeElement !== $("inBaseUrl")) $("inBaseUrl").value = d.baseUrl || "";
       $("apiKey").innerHTML = d.apiKeyConfigured
         ? '<span class="yes">configured</span>' : '<span class="no">not set</span>';
       $("registered").textContent = fmt(d.registeredAt);
@@ -181,6 +199,20 @@
         $("sub").textContent = "Could not reach the executor: " + e.message;
       }
     }
+    $("saveBtn").onclick = async () => {
+      $("saveMsg").textContent = "Saving…";
+      try {
+        const res = await fetch("api/settings", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ baseUrl: $("inBaseUrl").value.trim(), apiKey: $("inApiKey").value })
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        $("inApiKey").value = "";
+        $("saveMsg").textContent = "Saved. Reconnecting…";
+        setTimeout(tick, 900);
+      } catch (e) { $("saveMsg").textContent = "Save failed: " + e.message; }
+    };
+
     tick();
     setInterval(tick, 5000);
   </script>

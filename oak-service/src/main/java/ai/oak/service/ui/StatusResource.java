@@ -17,6 +17,7 @@ package ai.oak.service.ui;
 
 import ai.oak.service.AgentStatus;
 import ai.oak.service.config.PlatformConfig;
+import ai.oak.service.config.RuntimeSettings;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -41,17 +42,19 @@ public class StatusResource {
     @Inject
     PlatformConfig config;
 
+    @Inject
+    RuntimeSettings settings;
+
     @GET
     @Path("/status")
     @Produces(MediaType.APPLICATION_JSON)
     public StatusView status() {
         final List<StepView> recent = status.getRecent().stream()
                 .map(r -> new StepView(r.at(), r.workflowId(), r.taskId(), r.capability(), r.status(), r.note())).toList();
-        return new StatusView(status.isConnected(), config.platform().name(),
-                config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null), config.service().name(),
-                config.service().version(), config.platform().apiKey().filter(k -> !k.isBlank()).isPresent(),
-                config.poll().interval().toString(), config.poll().workerThreads(), config.tools().awsEnabled(),
-                config.tools().dockerEnabled(), status.getRegisteredAt(), status.getLastError(), status.getAdvertised(), recent);
+        return new StatusView(status.isConnected(), config.platform().name(), settings.baseUrl(), config.service().name(),
+                config.service().version(), settings.apiKeyConfigured(), config.poll().interval().toString(),
+                config.poll().workerThreads(), config.tools().awsEnabled(), config.tools().dockerEnabled(),
+                status.getRegisteredAt(), status.getLastError(), status.getAdvertised(), recent);
     }
 
     /** Everything the page renders. The API key is represented only as {@code apiKeyConfigured}. */

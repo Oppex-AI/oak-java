@@ -22,6 +22,7 @@ import ai.oak.service.client.TaskStatus;
 import ai.oak.service.client.ToolServiceClient;
 import ai.oak.service.client.ToolServiceRegistrationRequest;
 import ai.oak.service.config.PlatformConfig;
+import ai.oak.service.config.RuntimeSettings;
 import ai.oak.tools.Tool;
 import ai.oak.tools.ToolRegistry;
 import ai.oak.tools.ToolResult;
@@ -64,6 +65,9 @@ public class ExecutorAgent {
     PlatformConfig config;
 
     @Inject
+    RuntimeSettings settings;
+
+    @Inject
     AgentStatus status;
 
     /** Any customer-supplied {@link Tool} CDI beans, registered after the built-ins so theirs win. */
@@ -78,12 +82,29 @@ public class ExecutorAgent {
     void onStart(@Observes final StartupEvent event) {
         registry = buildRegistry();
         status.wired(registry.all().stream().map(Tool::capability).toList());
+        connect();
+    }
 
-        final String baseUrl = config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null);
-        final String apiKey = config.platform().apiKey().filter(k -> !k.isBlank()).orElse(null);
+    void onStop(@Observes final ShutdownEvent event) {
+        teardown();
+    }
+
+    /**
+     * Re-read the platform settings (base URL + API key) and reconnect. Called after the UI updates them,
+     * so a key pasted into the management page takes effect without a restart.
+     */
+    public synchronized void reconnect() {
+        LOG.info("Reconnecting executor with updated settings");
+        teardown();
+        connect();
+    }
+
+    private synchronized void connect() {
+        final String baseUrl = trimToNull(settings.baseUrl());
+        final String apiKey = trimToNull(settings.apiKey());
         if (baseUrl == null || apiKey == null) {
-            LOG.warn("Executor idle: set oak.platform.base-url and oak.platform.api-key to connect. " +
-                    "{} tool(s) are wired and ready.", registry.all().size());
+            LOG.warn("Executor idle: set the platform base URL and API key (management page or config) to " +
+                    "connect. {} tool(s) are wired and ready.", registry.all().size());
             status.disconnected("not configured (missing base URL or API key)");
             return;
         }
@@ -105,16 +126,23 @@ public class ExecutorAgent {
                 config.poll().interval());
     }
 
-    void onStop(@Observes final ShutdownEvent event) {
+    private void teardown() {
         if (poller != null) {
             poller.shutdownNow();
+            poller = null;
         }
         if (workers != null) {
             workers.shutdown();
+            workers = null;
         }
         if (client != null) {
             client.close();
+            client = null;
         }
+    }
+
+    private static String trimToNull(final String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private ToolRegistry buildRegistry() {

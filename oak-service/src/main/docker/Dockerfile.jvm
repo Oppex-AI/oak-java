@@ -1,0 +1,16 @@
+# oak-service (Quarkus fast-jar) — the customer-side runbook executor. Build context = the oak-java repo
+# root, so the module path is included:
+#   docker build -f oak-service/src/main/docker/Dockerfile.jvm -t oak-service .
+#
+# Runtime config is env-driven (OAK_PLATFORM_BASE_URL, OAK_UI_PORT, ...) but the platform base URL and
+# API key are normally set from the management page and persisted under OAK_DATA_DIR — mount a volume
+# there so they survive restarts. The service listens only for its own status UI.
+FROM registry.access.redhat.com/ubi9/openjdk-21:1.23
+
+USER 185
+WORKDIR /deployments
+COPY oak-service/target/quarkus-app/ ./
+
+# Default management-UI port (override with OAK_UI_PORT). Persisted settings live in OAK_DATA_DIR.
+EXPOSE 8080
+ENTRYPOINT ["java", "-Djava.util.logging.manager=org.jboss.logmanager", "-jar", "quarkus-run.jar"]
