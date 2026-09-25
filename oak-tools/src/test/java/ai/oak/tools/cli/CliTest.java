@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.tools.cli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,13 +30,11 @@ class CliTest {
 
     @Test
     void listValueBecomesSeparateArgvTokensButOneSpaceJoinedPreview() {
-        final Cli cli = Cli.aws("ec2", "start-instances")
-                .required("--instance-ids", List.of("i-1", "i-2"), "<instanceIds>")
+        final Cli cli = Cli.aws("ec2", "start-instances").required("--instance-ids", List.of("i-1", "i-2"), "<instanceIds>")
                 .opt("--region", "us-west-2");
 
         assertEquals("aws ec2 start-instances --instance-ids i-1 i-2 --region us-west-2", cli.build());
-        assertEquals(
-                List.of("aws", "ec2", "start-instances", "--instance-ids", "i-1", "i-2", "--region", "us-west-2"),
+        assertEquals(List.of("aws", "ec2", "start-instances", "--instance-ids", "i-1", "i-2", "--region", "us-west-2"),
                 cli.argv());
     }
 
@@ -44,9 +57,7 @@ class CliTest {
 
     @Test
     void absentOptionalFlagsAreOmitted() {
-        final Cli cli = Cli.aws("ec2", "describe-instances")
-                .opt("--region", null)
-                .optList("--filters", List.of());
+        final Cli cli = Cli.aws("ec2", "describe-instances").opt("--region", null).optList("--filters", List.of());
 
         assertEquals("aws ec2 describe-instances", cli.build());
         assertEquals(List.of("aws", "ec2", "describe-instances"), cli.argv());

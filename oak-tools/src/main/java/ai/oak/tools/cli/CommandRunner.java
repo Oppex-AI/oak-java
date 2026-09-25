@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.tools.cli;
 
 import ai.oak.tools.ToolResult;
@@ -7,7 +22,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Runs an argv and captures its result. The JDK-only executor behind every command-line
@@ -79,7 +96,10 @@ public final class CommandRunner {
     private static String await(final CompletableFuture<String> future) {
         try {
             return future.get(5, TimeUnit.SECONDS);
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "";
+        } catch (ExecutionException | TimeoutException e) {
             return "";
         }
     }

@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<module name="Checker">
+
+    <!-- File-level checks -->
+    <property name="charset" value="UTF-8"/>
+    <module name="FileTabCharacter"/>
+    <module name="FileLength">
+        <property name="max" value="2000"/>
+    </module>
+
+    <!-- Allows @SuppressWarnings("checkstyle:...") on individual elements -->
+    <module name="SuppressWarningsFilter"/>
+
+    <!-- AST-based checks -->
+    <module name="TreeWalker">
+
+        <!-- Required for SuppressWarningsFilter to work -->
+        <module name="SuppressWarningsHolder"/>
+
+        <!-- ===== Imports ===== -->
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+
+        <!-- ===== Control flow ===== -->
+        <module name="EmptyBlock"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="FallThrough"/>
+        <!--
+            Require explicit braces on every if/else/for/while/do block, even when the body is
+            a single statement. Avoids the classic "Apple goto fail" footgun and makes diffs
+            cleaner when a second statement is added later. Lambdas are excluded — single-
+            expression lambdas (`x -> x + 1`) are idiomatic and braces would just add noise.
+        -->
+        <module name="NeedBraces">
+            <property name="tokens"
+                      value="LITERAL_DO, LITERAL_ELSE, LITERAL_FOR, LITERAL_IF, LITERAL_WHILE"/>
+        </module>
+
+        <!-- ===== Naming ===== -->
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="MemberName"/>
+        <module name="LocalVariableName"/>
+        <module name="ConstantName"/>
+
+        <!-- ===== Maintainability ===== -->
+        <module name="MethodLength">
+            <property name="max" value="30"/>
+        </module>
+
+        <module name="JavadocType">
+            <!-- Do NOT require @author, @version, etc -->
+            <property name="scope" value="public"/>
+            <property name="allowMissingParamTags" value="true"/>
+            <property name="allowUnknownTags" value="true"/>
+        </module>
+
+        <module name="CyclomaticComplexity">
+            <property name="max" value="12"/>
+        </module>
+
+        <module name="ParameterNumber">
+            <property name="max" value="7"/>
+        </module>
+
+        <module name="ClassFanOutComplexity">
+            <property name="max" value="25"/>
+        </module>
+
+        <module name="WhitespaceAround">
+            <property name="tokens"
+                      value="LITERAL_IF, LITERAL_ELSE, LITERAL_FOR, LITERAL_WHILE,
+                     LITERAL_DO, LITERAL_TRY, LITERAL_CATCH, LITERAL_FINALLY,
+                     LITERAL_SWITCH, LITERAL_SYNCHRONIZED"/>
+        </module>
+
+        <!-- ===== Error-prone patterns ===== -->
+        <module name="EqualsHashCode"/>
+        <module name="IllegalCatch">
+            <property name="illegalClassNames"
+                      value="java.lang.Exception,java.lang.Throwable"/>
+        </module>
+
+        <!-- Disabled: Too strict - conflicts with parameter reassignment patterns -->
+        <!-- <module name="FinalParameters"/> -->
+        <module name="FinalLocalVariable">
+            <property name="tokens" value="VARIABLE_DEF"/>
+        </module>
+
+
+    </module>
+
+</module>

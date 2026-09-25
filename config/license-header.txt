@@ -13,18 +13,3 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package ai.oak.tools.aws.cloudwatch;
-
-import ai.oak.tools.ToolRegistry;
-
-/** Registers the generic AWS CloudWatch (metrics, alarms, logs) tools. */
-public final class CloudWatchTools {
-
-    private CloudWatchTools() {
-    }
-
-    public static void registerAll(final ToolRegistry registry) {
-        registry.register(new CloudWatchGetMetricStatisticsTool()).register(new CloudWatchDescribeAlarmsTool())
-                .register(new CloudWatchLogsFilterTool()).register(new CloudWatchLogsTailTool());
-    }
-}

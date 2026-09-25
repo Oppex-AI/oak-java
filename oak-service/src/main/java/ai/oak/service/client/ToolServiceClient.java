@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.service.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -42,25 +57,21 @@ public final class ToolServiceClient implements AutoCloseable {
         this.baseUrl = stripTrailingSlash(baseUrl);
         this.apiKey = apiKey;
         this.platformName = platformName;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 // Do not follow redirects: a redirect on an authenticated API call is either a
                 // misconfiguration or something interposing, and replaying the API key to wherever it
                 // points is not a thing to do quietly.
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
-        this.mapper = JsonMapper.builder()
-                .addModule(new JavaTimeModule())
+                .followRedirects(HttpClient.Redirect.NEVER).build();
+        this.mapper = JsonMapper.builder().addModule(new JavaTimeModule())
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                .serializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-                .build();
+                .serializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL).build();
     }
 
     /** Announces this service and the capabilities it can run. */
     public ToolServiceRegistrationResponse register(final ToolServiceRegistrationRequest request)
             throws IOException, InterruptedException {
-        final ApiResponse<ToolServiceRegistrationResponse> body =
-                post(REGISTER, request, new TypeReference<>() { });
+        final ApiResponse<ToolServiceRegistrationResponse> body = post(REGISTER, request, new TypeReference<>() {
+        });
         if (body != null && !body.success()) {
             throw new IOException("Registration refused by " + platformName + ": " + body.message());
         }
@@ -77,14 +88,15 @@ public final class ToolServiceClient implements AutoCloseable {
         if (raw.body() == null || raw.body().isBlank()) {
             return Optional.empty();
         }
-        final ApiResponse<RemoteStep> body =
-                mapper.readValue(raw.body(), new TypeReference<ApiResponse<RemoteStep>>() { });
+        final ApiResponse<RemoteStep> body = mapper.readValue(raw.body(), new TypeReference<ApiResponse<RemoteStep>>() {
+        });
         return Optional.ofNullable(body == null ? null : body.data());
     }
 
     /** Reports the outcome of a step. */
     public void reportResult(final RemoteStepResultRequest result) throws IOException, InterruptedException {
-        post(STEP_RESULT, result, new TypeReference<ApiResponse<Void>>() { });
+        post(STEP_RESULT, result, new TypeReference<ApiResponse<Void>>() {
+        });
     }
 
     public String platformName() {
@@ -93,18 +105,15 @@ public final class ToolServiceClient implements AutoCloseable {
 
     private <T> ApiResponse<T> post(final String path, final Object payload, final TypeReference<ApiResponse<T>> type)
             throws IOException, InterruptedException {
-        final HttpResponse<String> raw = send(request(path)
-                .header("Content-Type", "application/json")
+        final HttpResponse<String> raw = send(request(path).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload))));
         requireSuccess(raw, path);
         return raw.body() == null || raw.body().isBlank() ? null : mapper.readValue(raw.body(), type);
     }
 
     private HttpRequest.Builder request(final String path) {
-        return HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + TOOLS_PATH + path))
-                .header(API_KEY_HEADER, apiKey == null ? "" : apiKey)
-                .timeout(REQUEST_TIMEOUT);
+        return HttpRequest.newBuilder().uri(URI.create(baseUrl + TOOLS_PATH + path))
+                .header(API_KEY_HEADER, apiKey == null ? "" : apiKey).timeout(REQUEST_TIMEOUT);
     }
 
     private HttpResponse<String> send(final HttpRequest.Builder builder) throws IOException, InterruptedException {
@@ -119,8 +128,8 @@ public final class ToolServiceClient implements AutoCloseable {
         }
         String detail = response.body() == null ? "" : response.body().trim();
         try {
-            final ApiResponse<Object> parsed =
-                    mapper.readValue(detail, new TypeReference<ApiResponse<Object>>() { });
+            final ApiResponse<Object> parsed = mapper.readValue(detail, new TypeReference<ApiResponse<Object>>() {
+            });
             if (parsed != null && parsed.message() != null) {
                 detail = parsed.message();
             }
@@ -130,8 +139,8 @@ public final class ToolServiceClient implements AutoCloseable {
             }
         }
         if (status == 401 || status == 403) {
-            throw new IOException(what + " rejected (HTTP " + status + "): " + detail
-                    + " — check the API key is correct, active, and belongs to this workspace.");
+            throw new IOException(what + " rejected (HTTP " + status + "): " + detail +
+                    " — check the API key is correct, active, and belongs to this workspace.");
         }
         throw new IOException(what + " failed (HTTP " + status + "): " + detail);
     }

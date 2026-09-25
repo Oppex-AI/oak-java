@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.service;
 
 import ai.oak.service.client.CapabilityDeclaration;
@@ -43,7 +58,7 @@ import org.slf4j.LoggerFactory;
 @ApplicationScoped
 public class ExecutorAgent {
 
-    private static final Logger log = LoggerFactory.getLogger(ExecutorAgent.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ExecutorAgent.class);
 
     @Inject
     PlatformConfig config;
@@ -67,8 +82,8 @@ public class ExecutorAgent {
         final String baseUrl = config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null);
         final String apiKey = config.platform().apiKey().filter(k -> !k.isBlank()).orElse(null);
         if (baseUrl == null || apiKey == null) {
-            log.warn("Executor idle: set oak.platform.base-url and oak.platform.api-key to connect. "
-                    + "{} tool(s) are wired and ready.", registry.all().size());
+            LOG.warn("Executor idle: set oak.platform.base-url and oak.platform.api-key to connect. " +
+                    "{} tool(s) are wired and ready.", registry.all().size());
             status.disconnected("not configured (missing base URL or API key)");
             return;
         }
@@ -86,7 +101,7 @@ public class ExecutorAgent {
         });
         final long millis = Math.max(1000, config.poll().interval().toMillis());
         poller.scheduleWithFixedDelay(this::pollOnce, millis, millis, TimeUnit.MILLISECONDS);
-        log.info("Executor started against {} as '{}', polling every {}", baseUrl, config.service().name(),
+        LOG.info("Executor started against {} as '{}', polling every {}", baseUrl, config.service().name(),
                 config.poll().interval());
     }
 
@@ -115,25 +130,24 @@ public class ExecutorAgent {
             built.register(tool);
             custom++;
         }
-        log.info("Tools: {} total ({} built-in set(s), {} custom bean(s))", built.all().size(),
+        LOG.info("Tools: {} total ({} built-in set(s), {} custom bean(s))", built.all().size(),
                 (config.tools().awsEnabled() ? 1 : 0) + (config.tools().dockerEnabled() ? 1 : 0), custom);
         return built;
     }
 
     private boolean register(final String baseUrl) {
         final List<CapabilityDeclaration> declared = registry.all().stream()
-                .map(tool -> new CapabilityDeclaration(tool.capability(), tool.permission(), tool.description()))
-                .toList();
+                .map(tool -> new CapabilityDeclaration(tool.capability(), tool.permission(), tool.description())).toList();
         try {
             client.register(new ToolServiceRegistrationRequest(config.service().name(), config.service().version(), declared));
             status.connected(config.platform().name(), baseUrl);
-            log.info("Registered with {}: {} capabilities declared", config.platform().name(), declared.size());
+            LOG.info("Registered with {}: {} capabilities declared", config.platform().name(), declared.size());
             return true;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            log.error("Registration with {} failed; executor will not poll: {}", config.platform().name(), e.getMessage());
+            LOG.error("Registration with {} failed; executor will not poll: {}", config.platform().name(), e.getMessage());
             status.disconnected(e.getMessage());
             return false;
         }
@@ -143,7 +157,7 @@ public class ExecutorAgent {
         try {
             client.nextStep().ifPresent(step -> workers.submit(() -> handle(step)));
         } catch (IOException e) {
-            log.warn("Poll failed (will retry): {}", e.getMessage());
+            LOG.warn("Poll failed (will retry): {}", e.getMessage());
             status.disconnected(e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -155,31 +169,33 @@ public class ExecutorAgent {
         String note = null;
         try {
             final ToolResult result = registry.execute(step.capability(), step.input()).orElse(null);
-            final RemoteStepResultRequest report;
             if (result == null) {
                 note = "no tool registered for capability " + step.capability();
-                report = new RemoteStepResultRequest(step.workflowId(), step.taskId(), TaskStatus.FAILED, Map.of(), note);
+                client.reportResult(failed(step, note));
             } else {
                 final boolean ok = result.success();
                 statusLabel = ok ? "SUCCESS" : "FAILED";
                 note = ok ? null : (result.timedOut() ? "timed out" : "exit " + result.exitCode());
-                report = new RemoteStepResultRequest(step.workflowId(), step.taskId(),
-                        ok ? TaskStatus.SUCCESS : TaskStatus.FAILED, outputOf(result), note);
+                client.reportResult(new RemoteStepResultRequest(step.workflowId(), step.taskId(),
+                        ok ? TaskStatus.SUCCESS : TaskStatus.FAILED, outputOf(result), note));
             }
-            client.reportResult(report);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             note = "could not report result: " + e.getMessage();
-            log.warn("Step {}/{} {} but reporting failed: {}", step.workflowId(), step.taskId(), statusLabel, e.getMessage());
+            LOG.warn("Step {}/{} {} but reporting failed: {}", step.workflowId(), step.taskId(), statusLabel, e.getMessage());
         } catch (RuntimeException e) {
             note = "execution error: " + e.getMessage();
-            log.warn("Step {}/{} threw: {}", step.workflowId(), step.taskId(), e.getMessage());
-            reportSafely(new RemoteStepResultRequest(step.workflowId(), step.taskId(), TaskStatus.FAILED, Map.of(), note));
+            LOG.warn("Step {}/{} threw: {}", step.workflowId(), step.taskId(), e.getMessage());
+            reportSafely(failed(step, note));
         }
-        status.recordStep(new AgentStatus.StepRecord(
-                Instant.now(), step.workflowId(), step.taskId(), step.capability(), statusLabel, note));
+        status.recordStep(new AgentStatus.StepRecord(Instant.now(), step.workflowId(), step.taskId(), step.capability(),
+                statusLabel, note));
+    }
+
+    private static RemoteStepResultRequest failed(final RemoteStep step, final String note) {
+        return new RemoteStepResultRequest(step.workflowId(), step.taskId(), TaskStatus.FAILED, Map.of(), note);
     }
 
     private void reportSafely(final RemoteStepResultRequest report) {
@@ -189,7 +205,7 @@ public class ExecutorAgent {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            log.warn("Could not report failure for {}/{}: {}", report.workflowId(), report.taskId(), e.getMessage());
+            LOG.warn("Could not report failure for {}/{}: {}", report.workflowId(), report.taskId(), e.getMessage());
         }
     }
 

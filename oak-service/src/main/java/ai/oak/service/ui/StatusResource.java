@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.service.ui;
 
 import ai.oak.service.AgentStatus;
@@ -31,30 +46,18 @@ public class StatusResource {
     @Produces(MediaType.APPLICATION_JSON)
     public StatusView status() {
         final List<StepView> recent = status.getRecent().stream()
-                .map(r -> new StepView(r.at(), r.workflowId(), r.taskId(), r.capability(), r.status(), r.note()))
-                .toList();
-        return new StatusView(
-                status.isConnected(),
-                config.platform().name(),
-                config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null),
-                config.service().name(),
-                config.service().version(),
-                config.platform().apiKey().filter(k -> !k.isBlank()).isPresent(),
-                config.poll().interval().toString(),
-                config.poll().workerThreads(),
-                config.tools().awsEnabled(),
-                config.tools().dockerEnabled(),
-                status.getRegisteredAt(),
-                status.getLastError(),
-                status.getAdvertised(),
-                recent);
+                .map(r -> new StepView(r.at(), r.workflowId(), r.taskId(), r.capability(), r.status(), r.note())).toList();
+        return new StatusView(status.isConnected(), config.platform().name(),
+                config.platform().baseUrl().filter(u -> !u.isBlank()).orElse(null), config.service().name(),
+                config.service().version(), config.platform().apiKey().filter(k -> !k.isBlank()).isPresent(),
+                config.poll().interval().toString(), config.poll().workerThreads(), config.tools().awsEnabled(),
+                config.tools().dockerEnabled(), status.getRegisteredAt(), status.getLastError(), status.getAdvertised(), recent);
     }
 
     /** Everything the page renders. The API key is represented only as {@code apiKeyConfigured}. */
-    public record StatusView(boolean connected, String platformName, String baseUrl, String serviceName,
-                             String serviceVersion, boolean apiKeyConfigured, String pollInterval, int workerThreads,
-                             boolean awsEnabled, boolean dockerEnabled, Instant registeredAt, String lastError,
-                             List<String> advertised, List<StepView> recent) {
+    public record StatusView(boolean connected, String platformName, String baseUrl, String serviceName, String serviceVersion,
+            boolean apiKeyConfigured, String pollInterval, int workerThreads, boolean awsEnabled, boolean dockerEnabled,
+            Instant registeredAt, String lastError, List<String> advertised, List<StepView> recent) {
     }
 
     /** One executed step for the recent-activity table. */

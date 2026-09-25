@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ai.oak.service.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,11 +38,9 @@ import org.junit.jupiter.api.Test;
  */
 class ProtocolMappingTest {
 
-    private final ObjectMapper mapper = JsonMapper.builder()
-            .addModule(new JavaTimeModule())
+    private final ObjectMapper mapper = JsonMapper.builder().addModule(new JavaTimeModule())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-            .serializationInclusion(JsonInclude.Include.NON_NULL)
-            .build();
+            .serializationInclusion(JsonInclude.Include.NON_NULL).build();
 
     @Test
     void registrationRequestSerialisesToTheExpectedShape() throws Exception {
@@ -35,7 +48,8 @@ class ProtocolMappingTest {
                 List.of(new CapabilityDeclaration("AWS_EC2_START_INSTANCES", ToolPermission.WRITE, "Start EC2 instances.")));
 
         final String json = mapper.writeValueAsString(request);
-        final Map<String, Object> parsed = mapper.readValue(json, new TypeReference<>() { });
+        final Map<String, Object> parsed = mapper.readValue(json, new TypeReference<>() {
+        });
 
         assertEquals("oak-service", parsed.get("name"));
         assertEquals("0.1.0", parsed.get("version"));
@@ -54,8 +68,8 @@ class ProtocolMappingTest {
                          "input":{"instanceIds":["i-1","i-2"],"region":"us-west-2"},
                          "referenceType":"INCIDENT","referenceId":"INC-9","sequenceOrder":1}}""";
 
-        final ApiResponse<RemoteStep> response =
-                mapper.readValue(wire, new TypeReference<ApiResponse<RemoteStep>>() { });
+        final ApiResponse<RemoteStep> response = mapper.readValue(wire, new TypeReference<ApiResponse<RemoteStep>>() {
+        });
 
         assertTrue(response.success());
         final RemoteStep step = response.data();
@@ -68,8 +82,9 @@ class ProtocolMappingTest {
 
     @Test
     void idlePollHasNullData() throws Exception {
-        final ApiResponse<RemoteStep> response = mapper.readValue(
-                "{\"success\":true,\"code\":200,\"data\":null}", new TypeReference<ApiResponse<RemoteStep>>() { });
+        final ApiResponse<RemoteStep> response = mapper.readValue("{\"success\":true,\"code\":200,\"data\":null}",
+                new TypeReference<ApiResponse<RemoteStep>>() {
+                });
         assertTrue(response.success());
         assertEquals(null, response.data());
     }
@@ -80,8 +95,9 @@ class ProtocolMappingTest {
                 {"success":true,"code":200,"data":{"id":3,"name":"oak-service","version":"0.1.0",
                  "lastSeenAt":"2026-09-24T10:15:30Z","capabilities":["AWS_EC2_START_INSTANCES"]}}""";
 
-        final ApiResponse<ToolServiceRegistrationResponse> response =
-                mapper.readValue(wire, new TypeReference<ApiResponse<ToolServiceRegistrationResponse>>() { });
+        final ApiResponse<ToolServiceRegistrationResponse> response = mapper.readValue(wire,
+                new TypeReference<ApiResponse<ToolServiceRegistrationResponse>>() {
+                });
 
         assertEquals(Instant.parse("2026-09-24T10:15:30Z"), response.data().lastSeenAt());
         assertEquals(List.of("AWS_EC2_START_INSTANCES"), response.data().capabilities());

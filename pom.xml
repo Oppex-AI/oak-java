@@ -48,6 +48,11 @@
     <slf4j.version>2.0.16</slf4j.version>
     <junit.version>5.11.0</junit.version>
     <quarkus.platform.version>3.15.1</quarkus.platform.version>
+
+    <!-- Dev process: Spotless (Oppex Eclipse formatter + Apache header) and Checkstyle. -->
+    <spotless.version>2.43.0</spotless.version>
+    <checkstyle.plugin.version>3.3.1</checkstyle.plugin.version>
+    <checkstyle.version>10.12.3</checkstyle.version>
   </properties>
 
   <dependencyManagement>
@@ -89,7 +94,85 @@
           <artifactId>maven-compiler-plugin</artifactId>
           <version>3.13.0</version>
         </plugin>
+
+        <!-- Spotless: the Oppex Eclipse formatter (shared with oppex-ai) plus, for this public
+             repo, the Apache 2.0 header on every source file. `mvn spotless:apply` fixes; the
+             `check` execution below fails the build on drift. -->
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>${spotless.version}</version>
+          <configuration>
+            <java>
+              <eclipse>
+                <file>${maven.multiModuleProjectDirectory}/config/eclipse-java-formatter.xml</file>
+              </eclipse>
+              <trimTrailingWhitespace/>
+              <endWithNewline/>
+              <removeUnusedImports/>
+              <importOrder/>
+              <licenseHeader>
+                <file>${maven.multiModuleProjectDirectory}/config/license-header.txt</file>
+              </licenseHeader>
+            </java>
+          </configuration>
+        </plugin>
+
+        <!-- Checkstyle: the Oppex ruleset, report-only (like oppex-ai) so it surfaces issues
+             without blocking the build; tests are suppressed in config/suppressions.xml. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-checkstyle-plugin</artifactId>
+          <version>${checkstyle.plugin.version}</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>${checkstyle.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle.xml</configLocation>
+            <suppressionsLocation>${maven.multiModuleProjectDirectory}/config/suppressions.xml</suppressionsLocation>
+            <consoleOutput>true</consoleOutput>
+            <failOnViolation>false</failOnViolation>
+            <failsOnError>false</failsOnError>
+            <violationSeverity>warning</violationSeverity>
+            <includeTestSourceDirectory>true</includeTestSourceDirectory>
+            <excludes>**/target/**</excludes>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>checkstyle-validate</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
 </project>
