@@ -12,5 +12,5 @@ WORKDIR /deployments
 COPY oak-service/target/quarkus-app/ ./
 
 # Default management-UI port (override with OAK_UI_PORT). Persisted settings live in OAK_DATA_DIR.
-EXPOSE 8080
+EXPOSE 9020
 ENTRYPOINT ["java", "-Djava.util.logging.manager=org.jboss.logmanager", "-jar", "quarkus-run.jar"]
