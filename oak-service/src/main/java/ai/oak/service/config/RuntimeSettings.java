@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,8 +47,8 @@ public class RuntimeSettings {
     @Inject
     PlatformConfig config;
 
-    @ConfigProperty(name = "oak.data.dir", defaultValue = "")
-    String dataDir;
+    @ConfigProperty(name = "oak.data.dir")
+    Optional<String> dataDir;
 
     private Path file;
     private volatile String baseUrl;
@@ -55,9 +56,8 @@ public class RuntimeSettings {
 
     @PostConstruct
     void init() {
-        final Path dir = (dataDir == null || dataDir.isBlank())
-                ? Path.of(System.getProperty("user.home", "."), ".oak")
-                : Path.of(dataDir);
+        final Path dir = dataDir.filter(d -> !d.isBlank()).map(Path::of)
+                .orElseGet(() -> Path.of(System.getProperty("user.home", "."), ".oak"));
         file = dir.resolve("settings.json");
         baseUrl = config.platform().baseUrl().filter(s -> !s.isBlank()).orElse(null);
         apiKey = config.platform().apiKey().filter(s -> !s.isBlank()).orElse(null);
