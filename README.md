@@ -85,7 +85,7 @@ ready. The only thing it listens on is the management UI.
 
 ### Management UI
 
-Open **http://localhost:8080/** for a read-only monitor: connection status and last-seen, the
+Open **http://localhost:9020/** for a read-only monitor: connection status and last-seen, the
 advertised capabilities, recent steps and their outcomes, and the effective config. It never shows
 the API key — only whether one is set. `GET /api/status` returns the same data as JSON. Bind it to
 localhost on a shared host with `OAK_UI_HOST=127.0.0.1`.
@@ -154,7 +154,7 @@ All under the `oak` prefix (`oak-service`):
 
 | Key | Default | |
 |---|---|---|
-| `oak.platform.name` | `oppex` | Which backend this is, for logs and the UI. |
+| `oak.platform.name` | `platform` | Which backend this is, for logs and the UI (set `OAK_PLATFORM_NAME=oppex`). |
 | `oak.platform.base-url` | — | The platform base URL. Absent → the executor stays idle. |
 | `oak.platform.api-key` | — | Workspace API key, sent as `X-API-KEY`. |
 | `oak.service.name` | `oak-service` | Reported at registration; keep it stable across restarts. |

@@ -29,7 +29,7 @@ Unconfigured, it boots idle (tools wired, not polling) rather than failing. See 
 
 ## Management UI
 
-**http://localhost:8080/** — connection status and last-seen, advertised capabilities, recent steps
+**http://localhost:9020/** — connection status and last-seen, advertised capabilities, recent steps
 and outcomes, and the effective config. Read-only; never shows the API key. `GET /api/status` returns
 the same as JSON. Use `OAK_UI_HOST=127.0.0.1` / `OAK_UI_PORT` to bind it down on a shared host.
 
