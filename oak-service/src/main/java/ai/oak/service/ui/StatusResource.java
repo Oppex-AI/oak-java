@@ -16,22 +16,18 @@
 package ai.oak.service.ui;
 
 import ai.oak.service.AgentStatus;
-import ai.oak.service.config.PlatformConfig;
-import ai.oak.service.config.RuntimeSettings;
+import ai.oak.service.config.OakConfig;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.time.Instant;
 import java.util.List;
 
 /**
- * Read-only JSON behind the management page: is this executor healthy, what did it advertise, and what
- * has it run. Answers "is my executor healthy and what has it run" without reaching back to the platform.
- *
- * <p>It never exposes the API key — only whether one is configured. The base URL and tool credentials
- * live in the process's own config, not here.
+ * Read-only JSON behind the management page: per-platform connection phase (incl. "waiting for admin
+ * approval"), what this service advertises, and the steps it has run. Never exposes a secret — only
+ * whether a token is present, and the client id masked.
  */
 @Path("/api")
 public class StatusResource {
@@ -40,30 +36,33 @@ public class StatusResource {
     AgentStatus status;
 
     @Inject
-    PlatformConfig config;
-
-    @Inject
-    RuntimeSettings settings;
+    OakConfig config;
 
     @GET
     @Path("/status")
     @Produces(MediaType.APPLICATION_JSON)
     public StatusView status() {
-        final List<StepView> recent = status.getRecent().stream()
-                .map(r -> new StepView(r.at(), r.workflowId(), r.taskId(), r.capability(), r.status(), r.note())).toList();
-        return new StatusView(status.isConnected(), config.platform().name(), settings.baseUrl(), config.service().name(),
-                config.service().version(), settings.apiKeyConfigured(), config.poll().interval().toString(),
+        final List<StepView> recent = status.getRecent().stream().map(r -> new StepView(r.at() == null ? null : r.at().toString(),
+                r.platform(), r.workflowId(), r.taskId(), r.capability(), r.status(), r.note())).toList();
+        final List<PlatformView> platforms = status.getConnections().stream()
+                .map(c -> new PlatformView(c.platform(), c.phase().name(), c.detail(), c.baseUrl(), c.clientIdMasked(),
+                        c.tokenPresent(), c.connectionId(), c.since() == null ? null : c.since().toString(), c.lastError()))
+                .toList();
+        return new StatusView(config.service().name(), config.service().version(), config.poll().interval().toString(),
                 config.poll().workerThreads(), config.tools().awsEnabled(), config.tools().dockerEnabled(),
-                status.getRegisteredAt(), status.getLastError(), status.getAdvertised(), recent);
+                status.getAdvertised(), platforms, recent);
     }
 
-    /** Everything the page renders. The API key is represented only as {@code apiKeyConfigured}. */
-    public record StatusView(boolean connected, String platformName, String baseUrl, String serviceName, String serviceVersion,
-            boolean apiKeyConfigured, String pollInterval, int workerThreads, boolean awsEnabled, boolean dockerEnabled,
-            Instant registeredAt, String lastError, List<String> advertised, List<StepView> recent) {
+    public record StatusView(String serviceName, String serviceVersion, String pollInterval, int workerThreads,
+            boolean awsEnabled, boolean dockerEnabled, List<String> advertised, List<PlatformView> platforms,
+            List<StepView> recent) {
     }
 
-    /** One executed step for the recent-activity table. */
-    public record StepView(Instant at, Long workflowId, Long taskId, String capability, String status, String note) {
+    public record PlatformView(String name, String phase, String detail, String baseUrl, String clientIdMasked,
+            boolean tokenPresent, String connectionId, String since, String lastError) {
+    }
+
+    public record StepView(String at, String platform, Long workflowId, Long taskId, String capability, String status,
+            String note) {
     }
 }

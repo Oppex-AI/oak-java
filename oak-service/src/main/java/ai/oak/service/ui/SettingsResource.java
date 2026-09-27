@@ -16,7 +16,7 @@
 package ai.oak.service.ui;
 
 import ai.oak.service.ExecutorAgent;
-import ai.oak.service.config.RuntimeSettings;
+import ai.oak.service.connection.ConnectionStore;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -26,15 +26,16 @@ import jakarta.ws.rs.core.MediaType;
 import java.util.Map;
 
 /**
- * Sets the platform connection from the management page: the base URL and the API key. The key is
- * persisted (not baked into the image) and the executor re-registers immediately. Write-only for the
- * key — it is never read back (the status endpoint reports only whether one is configured).
+ * Sets a platform's connection from the management page: the base URL and the workspace client id used
+ * to pair (and, for dev/manual bootstrap, an optional pre-issued API key). Secrets are persisted
+ * encrypted, never baked into the image; the executor re-pairs / re-registers immediately. Write-only
+ * for secrets — they are never read back.
  */
 @Path("/api")
 public class SettingsResource {
 
     @Inject
-    RuntimeSettings settings;
+    ConnectionStore store;
 
     @Inject
     ExecutorAgent agent;
@@ -44,13 +45,20 @@ public class SettingsResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> save(final SettingsRequest req) {
-        settings.update(req == null ? null : req.baseUrl(), req == null ? null : req.apiKey());
-        agent.reconnect();
-        return Map.of("ok", true, "baseUrl", settings.baseUrl() == null ? "" : settings.baseUrl(), "apiKeyConfigured",
-                settings.apiKeyConfigured());
+        final String platform = req != null && req.platform() != null && !req.platform().isBlank()
+                ? req.platform().trim()
+                : defaultPlatform();
+        store.update(platform, req == null ? null : req.baseUrl(), req == null ? null : req.clientId(),
+                req == null ? null : req.apiKey());
+        agent.reconnect(platform);
+        return Map.of("ok", true, "platform", platform);
     }
 
-    /** Inbound settings. A blank {@code apiKey} keeps the current key. */
-    public record SettingsRequest(String baseUrl, String apiKey) {
+    private String defaultPlatform() {
+        return store.names().stream().findFirst().orElse("oppex");
+    }
+
+    /** Inbound settings. A blank {@code apiKey} keeps the current bootstrap key. */
+    public record SettingsRequest(String platform, String baseUrl, String clientId, String apiKey) {
     }
 }

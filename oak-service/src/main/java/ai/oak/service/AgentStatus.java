@@ -15,54 +15,92 @@
  */
 package ai.oak.service;
 
+import ai.oak.service.connection.ConnectionPhase;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A live, in-memory snapshot of what this executor is doing: is it connected, what has it advertised,
- * and what steps has it run lately. Held so the management UI can answer "is my executor healthy and
- * what has it run" without reaching back to the platform.
- *
- * <p>In-memory and best-effort — it resets on restart and is not the system of record; the platform is.
+ * A live, in-memory snapshot of what this executor is doing: per-platform connection phase, what it has
+ * advertised, and the steps it has run lately. Held so the management UI can answer "is my executor
+ * healthy and what has it run" without reaching back to any platform. In-memory and best-effort — it
+ * resets on restart and is not the system of record.
  */
 @ApplicationScoped
 public class AgentStatus {
 
-    /** How many recent steps to keep. Enough to see the last few incidents, not a log store. */
     private static final int RECENT_LIMIT = 20;
 
-    private volatile boolean connected;
-    private volatile String platformName = "";
-    private volatile String baseUrl = "";
-    private volatile Instant registeredAt;
-    private volatile String lastError;
     private volatile List<String> advertised = List.of();
-
+    private final Map<String, Conn> connections = new ConcurrentHashMap<>();
     private final Deque<StepRecord> recent = new ArrayDeque<>();
 
     /** One executed step, for the recent-activity view. */
-    public record StepRecord(Instant at, Long workflowId, Long taskId, String capability, String status, String note) {
+    public record StepRecord(Instant at, String platform, Long workflowId, Long taskId, String capability, String status,
+            String note) {
+    }
+
+    /** An immutable per-platform view for the UI. Secrets are never here; the client id is masked. */
+    public record ConnView(String platform, ConnectionPhase phase, String detail, String baseUrl, String clientIdMasked,
+            boolean tokenPresent, String connectionId, Instant since, String lastError) {
+    }
+
+    private static final class Conn {
+        volatile ConnectionPhase phase = ConnectionPhase.IDLE;
+        volatile String detail;
+        volatile String baseUrl;
+        volatile String clientIdMasked;
+        volatile boolean tokenPresent;
+        volatile String connectionId;
+        volatile Instant since;
+        volatile String lastError;
     }
 
     /** The capabilities this service has wired and could run, set once the registry is built. */
-    public synchronized void wired(final List<String> advertised) {
+    public void wired(final List<String> advertised) {
         this.advertised = List.copyOf(advertised);
     }
 
-    public synchronized void connected(final String platformName, final String baseUrl) {
-        this.connected = true;
-        this.platformName = platformName;
-        this.baseUrl = baseUrl;
-        this.registeredAt = Instant.now();
-        this.lastError = null;
+    /** Update a platform's phase and a short human detail (e.g. "waiting for admin approval"). */
+    public void phase(final String platform, final ConnectionPhase phase, final String detail) {
+        final Conn conn = conn(platform);
+        conn.phase = phase;
+        conn.detail = detail;
+        conn.since = Instant.now();
+        if (phase != ConnectionPhase.ERROR && phase != ConnectionPhase.DISCONNECTED) {
+            conn.lastError = null;
+        }
     }
 
-    public synchronized void disconnected(final String error) {
-        this.connected = false;
-        this.lastError = error;
+    public void connected(final String platform, final String baseUrl, final String clientId, final String connectionId,
+            final boolean tokenPresent) {
+        final Conn conn = conn(platform);
+        conn.phase = ConnectionPhase.CONNECTED;
+        conn.detail = null;
+        conn.baseUrl = baseUrl;
+        conn.clientIdMasked = mask(clientId);
+        conn.connectionId = connectionId;
+        conn.tokenPresent = tokenPresent;
+        conn.since = Instant.now();
+        conn.lastError = null;
+    }
+
+    public void error(final String platform, final ConnectionPhase phase, final String error) {
+        final Conn conn = conn(platform);
+        conn.phase = phase;
+        conn.lastError = error;
+        conn.since = Instant.now();
+    }
+
+    public void meta(final String platform, final String baseUrl, final String clientId, final boolean tokenPresent) {
+        final Conn conn = conn(platform);
+        conn.baseUrl = baseUrl;
+        conn.clientIdMasked = mask(clientId);
+        conn.tokenPresent = tokenPresent;
     }
 
     public synchronized void recordStep(final StepRecord record) {
@@ -72,31 +110,32 @@ public class AgentStatus {
         }
     }
 
-    public boolean isConnected() {
-        return connected;
-    }
-
-    public String getPlatformName() {
-        return platformName;
-    }
-
-    public String getBaseUrl() {
-        return baseUrl;
-    }
-
-    public Instant getRegisteredAt() {
-        return registeredAt;
-    }
-
-    public String getLastError() {
-        return lastError;
-    }
-
     public List<String> getAdvertised() {
         return advertised;
     }
 
+    public List<ConnView> getConnections() {
+        return connections.entrySet().stream()
+                .map(e -> new ConnView(e.getKey(), e.getValue().phase, e.getValue().detail, e.getValue().baseUrl,
+                        e.getValue().clientIdMasked, e.getValue().tokenPresent, e.getValue().connectionId, e.getValue().since,
+                        e.getValue().lastError))
+                .sorted((a, b) -> a.platform().compareToIgnoreCase(b.platform())).toList();
+    }
+
     public synchronized List<StepRecord> getRecent() {
         return List.copyOf(recent);
+    }
+
+    private Conn conn(final String platform) {
+        return connections.computeIfAbsent(platform, k -> new Conn());
+    }
+
+    /** Masks an id for display: keep the first 4 chars, hide the rest. Never show the whole thing. */
+    private static String mask(final String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        final String s = id.trim();
+        return s.length() <= 4 ? "****" : s.substring(0, 4) + "…";
     }
 }
