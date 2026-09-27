@@ -72,6 +72,10 @@ Authentication is one-directional: the service authenticates to the platform wit
 key (`X-API-KEY`); the platform has no address for you and no way to reach you when this isn't
 running. Polling is the baseline; a WebSocket push path is a later optimisation.
 
+It obtains that key by **approval-based pairing**: you configure a base URL and a workspace client id,
+the service pairs and waits for an admin to approve, then receives a dedicated token. The full wire
+contract a platform implements is in [docs/pairing-contract.md](docs/pairing-contract.md).
+
 ## Run the service
 
 ```bash
