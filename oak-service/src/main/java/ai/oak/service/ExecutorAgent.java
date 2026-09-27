@@ -20,13 +20,10 @@ import ai.oak.service.connection.ConnectionStore;
 import ai.oak.service.connection.PlatformConnection;
 import ai.oak.tools.Tool;
 import ai.oak.tools.ToolRegistry;
-import ai.oak.tools.aws.AwsTools;
-import ai.oak.tools.docker.DockerTools;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,16 +51,15 @@ public class ExecutorAgent {
     @Inject
     AgentStatus status;
 
-    /** Any customer-supplied {@link Tool} CDI beans, registered after the built-ins so theirs win. */
     @Inject
-    Instance<Tool> customTools;
+    ToolCatalog catalog;
 
     private final Map<String, PlatformConnection> connections = new ConcurrentHashMap<>();
     private ToolRegistry registry;
     private ExecutorService workers;
 
     void onStart(@Observes final StartupEvent event) {
-        registry = buildRegistry();
+        registry = catalog.registry();
         status.wired(registry.all().stream().map(Tool::capability).toList());
         workers = Executors.newFixedThreadPool(Math.max(1, config.poll().workerThreads()), r -> {
             final Thread t = new Thread(r, "oak-worker");
@@ -105,23 +101,5 @@ public class ExecutorAgent {
         final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status,
                 config.service().name(), config.service().version(), config.poll().interval().toMillis());
         return new PlatformConnection(name, store.get(name), ctx);
-    }
-
-    private ToolRegistry buildRegistry() {
-        final ToolRegistry built = new ToolRegistry();
-        if (config.tools().awsEnabled()) {
-            AwsTools.registerAll(built);
-        }
-        if (config.tools().dockerEnabled()) {
-            DockerTools.registerAll(built);
-        }
-        int custom = 0;
-        for (final Tool tool : customTools) {
-            built.register(tool);
-            custom++;
-        }
-        LOG.info("Tools: {} total ({} built-in set(s), {} custom bean(s))", built.all().size(),
-                (config.tools().awsEnabled() ? 1 : 0) + (config.tools().dockerEnabled() ? 1 : 0), custom);
-        return built;
     }
 }
