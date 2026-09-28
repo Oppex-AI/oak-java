@@ -1,128 +1,114 @@
 # OAK pairing contract — `POST /v1/tools/pair`
 
-The wire contract a platform must implement so an OAK tool service (`oak-service`) can connect to it via
-**approval-based pairing**. It is vendor-neutral: Oppex is the first platform, but anything implementing
-these shapes works. The client side is already implemented in `oak-service`; this document is the
-agreement the **server** side builds against.
+The wire contract a platform implements so an OAK tool service (`oak-service`) connects to it via
+**approval-based pairing**. Vendor-neutral: Oppex is the first platform, but anything implementing these
+shapes works. Both sides of this are implemented — Oppex `service-workflow` on the server, `oak-service`
+on the client; this document is the agreement between them.
 
-`/pair` is the only endpoint pairing adds. Once a service is paired it uses the existing
+`/pair` is the only endpoint pairing adds. Once paired, a service uses the existing
 `register` / `steps/next` / `steps/result` endpoints unchanged (summarised at the end).
 
 ## Model
 
-A tool instance proves its identity with a one-time `pairingSecret`, an admin approves the pairing on
-the platform's "OAK Connection" page, and the instance receives a **dedicated workspace API key**
-(`token`) which it then sends as `X-API-KEY` on every authenticated call.
+The admin issues two things together, shown on the platform's OAK/Tools page: a **workspace client id**
+(e.g. `oak_0cd990…`) and a **pre-shared pairing secret**. Both are configured into OAK. OAK proves its
+identity by presenting the secret on every pairing call; an admin approves the pending connection; the
+platform then hands back a **dedicated workspace API key** (`token`) which OAK uses as `X-API-KEY` on
+every authenticated call.
 
-**The platform never dials the tool service** — the service always polls outbound. Authentication is
-one-directional.
+The pairing secret is long-lived (rotate only when the admin regenerates it) and is **distinct from the
+runtime token**. **The platform never dials OAK** — OAK always polls outbound.
 
 ```
-service ──▶ POST /v1/tools/pair  (FIRST)   → PENDING_APPROVAL {pairingId, pairingSecret}
-service ──▶ POST /v1/tools/pair  (POLL, 5s→30s backoff)
-                     …admin approves…       → APPROVED {connectionId, token}
-service ──▶ POST /v1/tools/register         (X-API-KEY: token)
-service ──▶ GET  /v1/tools/steps/next       (X-API-KEY: token)
-service ──▶ POST /v1/tools/steps/result     (X-API-KEY: token)
+OAK ──▶ POST /v1/tools/pair  CREATE {clientId, pairingSecret, name, version}
+                                     → PENDING_APPROVAL {pairingId}
+OAK ──▶ POST /v1/tools/pair  POLL   {clientId, pairingId, pairingSecret}   (every 3–5s, backoff)
+                     …admin approves… → APPROVED {connectionId, token}
+OAK ──▶ POST /v1/tools/register      (X-API-KEY: token)   … then steps/next, steps/result
 ```
 
 ## Auth
 
-- `/pair` takes **no `X-API-KEY`** — it is how the service earns one. Identify and rate-limit by
-  `clientId` + source IP.
-- All other endpoints require `X-API-KEY: <token>`. A `401`/`403` on any of them means the admin
-  disconnected this connection: the service discards the token and re-pairs.
+- `/pair` is **anonymous** — no `X-API-KEY`. Identify and rate-limit by `clientId` + source IP; the
+  pre-shared secret is what authenticates the instance.
+- All other endpoints require `X-API-KEY: <token>`. A `401`/`403` there means the admin disconnected
+  this connection (the key was revoked): OAK discards the token and re-pairs automatically.
 
 ## Envelope
 
-Every response uses the platform's standard `APIResponse<T>` envelope:
+Every response uses the platform's standard `APIResponse<T>`:
 
 ```json
 { "success": true, "code": 200, "message": null, "data": { "...": "..." } }
 ```
 
-For the normal pairing states, **return HTTP 200 with a non-null `data`** (the client treats a null
-`data` on a 2xx as an error). Reserve non-2xx for genuine transport / auth / rate-limit failures — the
-client logs those and retries after ~5s.
+All pairing states are **HTTP 200** with a non-null `data`. Reserve non-2xx for genuine transport /
+rate-limit failures — OAK treats those as transient and retries.
 
 ## Request — `PairRequest`
 
-The client omits null fields on the wire, so there are two shapes:
+`{ clientId, name, version, pairingId, pairingSecret }` (OAK omits null fields on the wire). Two forms:
 
-**FIRST** — the service has no pairing yet:
-
-```json
-{ "clientId": "<workspace OAK client id>", "name": "oak-service", "version": "0.1.0" }
-```
-
-**POLL** — every subsequent call, until the pairing resolves:
+**CREATE** — no `pairingId`:
 
 ```json
-{ "clientId": "<same client id>", "pairingId": "<from FIRST>", "pairingSecret": "<from FIRST>" }
+{ "clientId": "oak_0cd990…", "pairingSecret": "<pre-shared secret>", "name": "oak-service", "version": "0.1.0" }
 ```
 
-**Only `clientId` + `pairingId` + `pairingSecret` together may claim the token.** `clientId` alone must
-not.
+**POLL** — every subsequent call, until it resolves:
+
+```json
+{ "clientId": "oak_0cd990…", "pairingId": "<from CREATE>", "pairingSecret": "<pre-shared secret>" }
+```
+
+`clientId` alone never yields a token — the secret is required and verified on **every** call.
 
 ## Response — `PairResponse`
 
-```
-{ status, pairingId?, pairingSecret?, connectionId?, token? }
-```
+`{ status, pairingId, connectionId, token }` — the server does **not** return a secret (OAK already holds
+the pre-shared one).
 
-| `status` | When | Must include | What the client does |
+| `status` | When | Includes | OAK's action |
 |---|---|---|---|
-| `PENDING_APPROVAL` | FIRST accepted, or still awaiting the admin | on FIRST: `pairingId` + `pairingSecret` (**returned once**) | persist the secret encrypted, then POLL with 5s→30s backoff |
-| `APPROVED` | admin approved | `connectionId` + `token` (**returned once**) | persist the token encrypted, register, start polling for steps |
-| `EXPIRED` | the pending pairing timed out (~15 min) | — | discard `pairingId`/`pairingSecret`, start a fresh FIRST |
-| `REJECTED` | admin declined | — | discard and start a fresh FIRST |
-| `DISCONNECTED` | admin disconnected this connection | — | discard and start a fresh FIRST |
-| `UNKNOWN` | fallback | — | discard and start a fresh FIRST |
+| `PENDING_APPROVAL` | CREATE accepted, or still awaiting the admin | on CREATE: `pairingId` | persist `pairingId`, POLL (3–5s → ~30s backoff) |
+| `APPROVED` | admin approved | `connectionId` + `token` (**first approved poll only**) | persist the token (encrypted), register, poll for steps |
+| `EXPIRED` | the pending request timed out (~15 min) | — | discard `pairingId`, CREATE again |
+| `DISCONNECTED` | admin disconnected this connection | — | stop and surface; re-pair only on operator action |
+| `REJECTED` | unknown/disabled client id, or wrong secret | — | fail with a clear message; do **not** retry blindly |
+| `UNKNOWN` | fallback | — | treat as a failure; an unrecognised status is mapped here, never thrown |
 
-All of these are **HTTP 200**. An unrecognised status string is treated by the client as `UNKNOWN`
-rather than an error, so adding a new status can never strand an older client. `pairingSecret` and
-`token` are each returned **exactly once** — the client persists them the moment it receives them.
+`token` appears **only on the first approved poll** — persist it immediately.
 
 ### Example responses
 
-FIRST accepted:
-
 ```json
-{"success":true,"code":200,"data":{"status":"PENDING_APPROVAL","pairingId":"pr_abc","pairingSecret":"ps_xyz"}}
-```
-
-POLL, still pending:
-
-```json
+{"success":true,"code":200,"data":{"status":"PENDING_APPROVAL","pairingId":"pr_abc"}}
 {"success":true,"code":200,"data":{"status":"PENDING_APPROVAL"}}
-```
-
-POLL, approved:
-
-```json
 {"success":true,"code":200,"data":{"status":"APPROVED","connectionId":"conn_42","token":"<dedicated workspace API key>"}}
 ```
 
 ## Server-side requirements
 
-- **`token` is a dedicated workspace API-key row** scoped to the workspace the `clientId` belongs to,
-  separate from any incident-ingest key — so disconnecting the executor revokes only this.
-- **Track `token_delivered` per pairing.** If the service crashes before persisting the token (it never
-  polls again), the admin disconnects the stuck connection and the service re-pairs — never silently
-  reissue the token for the same pairing.
-- **Pending pairings expire** (~15 min).
+- Store the pairing secret **hashed**; verify it in constant time on every CREATE and POLL. Never log it.
+- **`token` is a dedicated workspace API-key row** scoped to the client id's workspace, separate from any
+  incident-ingest key — so disconnecting the executor revokes only this.
+- Track token delivery: the token is returned **once**. If OAK crashes before persisting it, the admin
+  disconnects the stuck connection and OAK re-pairs — never silently reissue for the same pairing.
+- Pending pairings **expire** (~15 min); cap pending pairings per workspace.
 - **Rate-limit** the anonymous `/pair` endpoint by `clientId` + source IP.
-- **`pairingSecret` is a credential** — store it hashed, compare in constant time, and never log it.
 
 ## Client behaviour (for reference)
 
 Implemented in `oak-service` (`ai.oak.service.connection.PlatformConnection`):
 
-- Sends FIRST when it has no stored pairing; otherwise POLLs. Backoff doubles 5s → 30s (cap).
-- On `APPROVED`, persists `token` + `connectionId` (encrypted at rest), then registers and polls.
-- On any terminal status, discards the pairing and starts a fresh FIRST after a short delay.
-- On a `401`/`403` on an authenticated call, discards the token and re-pairs.
-- Secrets are stored encrypted (`SecretStore`, AES-256-GCM) and never logged; ids are masked in logs.
+- Configured with base URL + client id + pairing secret (`oak.platforms.<name>.*`, or the management
+  page). An optional `api-key` is a dev override that skips pairing entirely.
+- CREATE when it has no `pairingId`; otherwise POLL, backing off 5s → 30s.
+- `APPROVED` → persist token + connectionId (encrypted), register, poll for steps.
+- `EXPIRED` → re-CREATE. `REJECTED`/`UNKNOWN` → fail and surface (no blind retry). `DISCONNECTED` →
+  surface and wait for the operator to re-pair. A `401` on register/steps → discard token, auto re-pair.
+- Secrets (pairing secret, token) are stored encrypted (`SecretStore`, AES-256-GCM) and never logged;
+  ids are masked.
 
 ## Unchanged endpoints (post-pairing, `X-API-KEY: <token>`)
 
