@@ -49,7 +49,7 @@ public class SettingsResource {
                 ? req.platform().trim()
                 : defaultPlatform();
         store.update(platform, req == null ? null : req.baseUrl(), req == null ? null : req.clientId(),
-                req == null ? null : req.apiKey());
+                req == null ? null : req.pairingSecret(), req == null ? null : req.apiKey());
         agent.reconnect(platform);
         return Map.of("ok", true, "platform", platform);
     }
@@ -58,7 +58,7 @@ public class SettingsResource {
         return store.names().stream().findFirst().orElse("oppex");
     }
 
-    /** Inbound settings. A blank {@code apiKey} keeps the current bootstrap key. */
-    public record SettingsRequest(String platform, String baseUrl, String clientId, String apiKey) {
+    /** Inbound settings. A blank {@code pairingSecret}/{@code apiKey} keeps the current one. */
+    public record SettingsRequest(String platform, String baseUrl, String clientId, String pairingSecret, String apiKey) {
     }
 }

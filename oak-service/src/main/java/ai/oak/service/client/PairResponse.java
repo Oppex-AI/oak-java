@@ -18,11 +18,10 @@ package ai.oak.service.client;
 /**
  * Result of {@code POST /v1/tools/pair}.
  *
- * <p>On the FIRST request the platform returns {@link PairStatus#PENDING_APPROVAL} with a
- * {@code pairingId} and a {@code pairingSecret} — the secret is returned <b>once</b> and must be
- * persisted (encrypted) immediately. On a later poll it returns {@link PairStatus#APPROVED} with a
- * {@code connectionId} and the dedicated {@code token} (also returned once, persist encrypted), or a
- * terminal status with no secrets.
+ * <p>A CREATE returns {@link PairStatus#PENDING_APPROVAL} with a {@code pairingId} (no secret — the
+ * service already holds the pre-shared one). A later POLL returns {@link PairStatus#APPROVED} with a
+ * {@code connectionId} and the dedicated {@code token} — the token is present only on the first approved
+ * poll, so persist it at once — or a terminal status with neither.
  */
-public record PairResponse(PairStatus status, String pairingId, String pairingSecret, String connectionId, String token) {
+public record PairResponse(PairStatus status, String pairingId, String connectionId, String token) {
 }

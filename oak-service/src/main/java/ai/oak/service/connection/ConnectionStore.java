@@ -70,6 +70,7 @@ public class ConnectionStore {
             final PlatformState state = new PlatformState(entry.getKey());
             state.setBaseUrl(entry.getValue().baseUrl().orElse(null));
             entry.getValue().clientId().ifPresent(state::setClientId);
+            entry.getValue().pairingSecret().ifPresent(state::setPairingSecret);
             entry.getValue().apiKey().ifPresent(state::setApiKeyBootstrap);
             loadPersisted(state);
             states.put(entry.getKey(), state);
@@ -85,18 +86,30 @@ public class ConnectionStore {
         return states.get(name);
     }
 
-    /** UI edit: change how a platform is reached. Changing the identity drops any earned token / pairing. */
-    public synchronized void update(final String name, final String baseUrl, final String clientId, final String apiKey) {
+    /**
+     * UI edit: change how a platform is reached. A blank {@code pairingSecret}/{@code apiKey} keeps the
+     * current one. Changing the identity (URL or client id) drops the earned token and any in-flight
+     * pairing; changing just the secret drops the in-flight pairing but keeps a working token.
+     */
+    public synchronized void update(final String name, final String baseUrl, final String clientId, final String pairingSecret,
+            final String apiKey) {
         final PlatformState state = states.computeIfAbsent(name, PlatformState::new);
         final boolean identityChanged = !equalsTrimmed(state.baseUrl(), baseUrl) || !equalsTrimmed(state.clientId(), clientId);
+        final boolean secretChanged = pairingSecret != null && !pairingSecret.isBlank() &&
+                !equalsTrimmed(state.pairingSecret(), pairingSecret);
         state.setBaseUrl(baseUrl);
         state.setClientId(clientId);
+        if (pairingSecret != null && !pairingSecret.isBlank()) {
+            state.setPairingSecret(pairingSecret);
+        }
         if (apiKey != null && !apiKey.isBlank()) {
             state.setApiKeyBootstrap(apiKey);
         }
         if (identityChanged) {
             state.clearToken();
-            state.clearPairing();
+            state.clearPairingId();
+        } else if (secretChanged) {
+            state.clearPairingId();
         }
         persist(state);
     }
@@ -128,27 +141,34 @@ public class ConnectionStore {
             return;
         }
         try {
-            final JsonNode node = mapper.readTree(Files.readAllBytes(file));
-            if (node.hasNonNull("baseUrl")) {
-                state.setBaseUrl(node.get("baseUrl").asText());
-            }
-            if (node.hasNonNull("clientId")) {
-                state.setClientId(node.get("clientId").asText());
-            }
-            if (node.hasNonNull("apiKeyBootstrap")) {
-                state.setApiKeyBootstrap(secrets.decrypt(node.get("apiKeyBootstrap").asText()));
-            }
-            if (node.hasNonNull("pairingId") || node.hasNonNull("pairingSecret")) {
-                state.setPairing(textOrNull(node, "pairingId"), secrets.decrypt(textOrNull(node, "pairingSecret")));
-            }
-            if (node.hasNonNull("token")) {
-                state.setToken(secrets.decrypt(node.get("token").asText()), textOrNull(node, "connectionId"));
-            }
-            state.setTokenDelivered(node.path("tokenDelivered").asBoolean(state.token() != null));
+            overlay(state, mapper.readTree(Files.readAllBytes(file)));
             LOG.info("Loaded persisted connection state for {}", state.name());
         } catch (IOException | RuntimeException e) {
             LOG.warn("Could not read connection state for {} ({}); using config defaults", state.name(), e.getMessage());
         }
+    }
+
+    /** Overlay a persisted document onto the config-seeded state, decrypting the secret fields. */
+    private void overlay(final PlatformState state, final JsonNode node) {
+        if (node.hasNonNull("baseUrl")) {
+            state.setBaseUrl(node.get("baseUrl").asText());
+        }
+        if (node.hasNonNull("clientId")) {
+            state.setClientId(node.get("clientId").asText());
+        }
+        if (node.hasNonNull("apiKeyBootstrap")) {
+            state.setApiKeyBootstrap(secrets.decrypt(node.get("apiKeyBootstrap").asText()));
+        }
+        if (node.hasNonNull("pairingSecret")) {
+            state.setPairingSecret(secrets.decrypt(node.get("pairingSecret").asText()));
+        }
+        if (node.hasNonNull("pairingId")) {
+            state.setPairingId(node.get("pairingId").asText());
+        }
+        if (node.hasNonNull("token")) {
+            state.setToken(secrets.decrypt(node.get("token").asText()), textOrNull(node, "connectionId"));
+        }
+        state.setTokenDelivered(node.path("tokenDelivered").asBoolean(state.token() != null));
     }
 
     private Path file(final String name) {

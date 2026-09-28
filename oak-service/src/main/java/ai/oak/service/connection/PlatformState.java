@@ -68,22 +68,26 @@ public final class PlatformState {
         this.apiKeyBootstrap = trimToNull(apiKeyBootstrap);
     }
 
-    public synchronized String pairingId() {
-        return pairingId;
-    }
-
+    /** The pre-shared workspace pairing secret (from config or the UI), sent on every pairing call. */
     public synchronized String pairingSecret() {
         return pairingSecret;
     }
 
-    public synchronized void setPairing(final String pairingId, final String pairingSecret) {
-        this.pairingId = trimToNull(pairingId);
+    public synchronized void setPairingSecret(final String pairingSecret) {
         this.pairingSecret = trimToNull(pairingSecret);
     }
 
-    public synchronized void clearPairing() {
+    /** The in-flight pairing id the platform returned from CREATE; null before/after a pairing. */
+    public synchronized String pairingId() {
+        return pairingId;
+    }
+
+    public synchronized void setPairingId(final String pairingId) {
+        this.pairingId = trimToNull(pairingId);
+    }
+
+    public synchronized void clearPairingId() {
         this.pairingId = null;
-        this.pairingSecret = null;
     }
 
     public synchronized String token() {

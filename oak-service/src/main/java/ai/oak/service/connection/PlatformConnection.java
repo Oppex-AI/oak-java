@@ -123,8 +123,8 @@ public final class PlatformConnection {
 
         String token = state.effectiveToken();
         if (token == null) {
-            if (state.clientId() == null) {
-                idle("set a client id (to pair) or an API key");
+            if (state.clientId() == null || state.pairingSecret() == null) {
+                idle("set a client id and pairing secret (to pair), or an API key");
                 return;
             }
             token = pair();
@@ -143,10 +143,8 @@ public final class PlatformConnection {
 
     private String pair() {
         try {
-            if (state.pairingId() == null || state.pairingSecret() == null) {
-                if (!beginPairing()) {
-                    return null;
-                }
+            if (state.pairingId() == null && !create()) {
+                return null;
             }
             pollForApproval();
             return state.token();
@@ -166,27 +164,24 @@ public final class PlatformConnection {
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 
-    /** FIRST pairing request. true to proceed (pending, or already approved); false if terminal (rescheduled). */
-    private boolean beginPairing() throws IOException, InterruptedException {
+    /** CREATE: prove identity with the pre-shared secret. true if now pending (go poll); false if resolved. */
+    private boolean create() throws IOException, InterruptedException {
         ctx.status().phase(name, ConnectionPhase.PAIRING, "starting pairing");
         LOG.info("[{}] pairing (clientId {})", name, mask(state.clientId()));
-        final PairResponse first = client.pair(PairRequest.first(state.clientId(), ctx.serviceName(), ctx.serviceVersion()));
-        if (first.status() == PairStatus.PENDING_APPROVAL && first.pairingId() != null) {
-            state.setPairing(first.pairingId(), first.pairingSecret());
+        final PairResponse r = client
+                .pair(PairRequest.create(state.clientId(), state.pairingSecret(), ctx.serviceName(), ctx.serviceVersion()));
+        if (r.status() == PairStatus.PENDING_APPROVAL && r.pairingId() != null) {
+            state.setPairingId(r.pairingId());
             ctx.store().persist(state);
             ctx.status().phase(name, ConnectionPhase.PENDING_APPROVAL, "waiting for admin approval");
             LOG.info("[{}] waiting for admin approval (clientId {})", name, mask(state.clientId()));
             return true;
         }
-        if (first.status() == PairStatus.APPROVED && first.token() != null) {
-            approve(first);
-            return true;
-        }
-        terminal(first.status());
+        settle(r);
         return false;
     }
 
-    /** Poll until approved or terminal. Backs off 5s → 30s; logs no line per poll. */
+    /** Poll until approved or a terminal status. Backs off 5s → 30s; logs no line per poll. */
     private void pollForApproval() throws IOException, InterruptedException {
         long backoff = PAIR_POLL_INITIAL_MS;
         while (running && state.token() == null && state.pairingId() != null) {
@@ -195,29 +190,54 @@ public final class PlatformConnection {
                 return;
             }
             final PairResponse r = client.pair(PairRequest.poll(state.clientId(), state.pairingId(), state.pairingSecret()));
-            if (r.status() == PairStatus.APPROVED) {
-                approve(r);
-            } else if (r.status() == PairStatus.PENDING_APPROVAL) {
+            if (r.status() == PairStatus.PENDING_APPROVAL) {
                 backoff = Math.min(backoff * 2, PAIR_POLL_MAX_MS);
             } else {
-                terminal(r.status());
+                settle(r);
             }
         }
     }
 
+    /** Resolve a non-pending pairing response: approve, or handle the terminal status per its meaning. */
+    private void settle(final PairResponse r) {
+        switch (r.status()) {
+            case APPROVED -> approve(r);
+            case EXPIRED -> {
+                state.clearPairingId();
+                ctx.store().persist(state);
+                ctx.status().phase(name, ConnectionPhase.PAIRING, "pending request expired; re-creating");
+                LOG.info("[{}] pairing expired — starting a fresh pairing", name);
+                scheduleRetry(RETRY_SHORT_MS);
+            }
+            case DISCONNECTED -> {
+                state.clearToken();
+                state.clearPairingId();
+                ctx.store().persist(state);
+                ctx.status().phase(name, ConnectionPhase.DISCONNECTED, "disconnected by admin; re-pair from Settings");
+                LOG.warn("[{}] disconnected by admin — re-pair from the Settings page", name);
+            }
+            case REJECTED -> fail("rejected: unknown/disabled client id or wrong pairing secret");
+            default -> fail("unexpected pairing status: " + r.status());
+        }
+    }
+
     private void approve(final PairResponse r) {
+        if (r.token() == null) {
+            fail("approved but no token was delivered — re-pair from Settings");
+            return;
+        }
         state.setToken(r.token(), r.connectionId());
-        state.clearPairing();
+        state.clearPairingId();
         ctx.store().persist(state);
         LOG.info("[{}] pairing approved (connectionId {})", name, mask(r.connectionId()));
     }
 
-    private void terminal(final PairStatus s) {
-        state.clearPairing();
+    /** A permanent pairing failure: surface it and do not retry blindly — the operator must act. */
+    private void fail(final String reason) {
+        state.clearPairingId();
         ctx.store().persist(state);
-        ctx.status().phase(name, ConnectionPhase.PAIRING, s + "; starting a fresh pairing");
-        LOG.info("[{}] pairing {} — starting a fresh pairing shortly", name, s);
-        scheduleRetry(FRESH_PAIR_DELAY_MS);
+        ctx.status().error(name, ConnectionPhase.ERROR, reason);
+        LOG.error("[{}] pairing failed: {}", name, reason);
     }
 
     private void registerAndPoll() {

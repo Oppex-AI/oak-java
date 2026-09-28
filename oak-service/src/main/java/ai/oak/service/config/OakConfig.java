@@ -58,14 +58,21 @@ public interface OakConfig {
         Optional<String> baseUrl();
 
         /**
-         * Workspace client id, shown on the platform's "OAK Connection" settings page. Its presence turns
-         * on approval-based pairing: the service pairs with this id and waits for an admin to approve.
+         * Workspace client id (e.g. {@code oak_0cd990…}), shown on the platform's OAK/Tools page. Its
+         * presence, with {@link #pairingSecret()}, turns on approval-based pairing.
          */
         Optional<String> clientId();
 
         /**
-         * A pre-issued API key. Dev / manual bootstrap only: when set, pairing is skipped and this key is
-         * used directly. Normal deployments leave this empty and pair on the {@link #clientId()}.
+         * The pre-shared, long-lived pairing secret the admin issued alongside the client id. Sent on every
+         * pairing call and verified by the platform; the service proves its identity with it. Rotate only
+         * when the admin regenerates it. Distinct from the runtime API token, and never sent on register/steps.
+         */
+        Optional<String> pairingSecret();
+
+        /**
+         * A pre-issued API key. Dev / manual override only: when set, pairing is skipped and this key is used
+         * directly. Normal deployments leave this empty and pair on the {@link #clientId()} + secret.
          */
         Optional<String> apiKey();
     }

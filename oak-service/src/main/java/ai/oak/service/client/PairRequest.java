@@ -19,19 +19,19 @@ package ai.oak.service.client;
  * Body of {@code POST /v1/tools/pair}. Anonymous — it carries no API key, because pairing is how the
  * service earns one.
  *
- * <p>The FIRST request sends only {@code clientId} + {@code name} + {@code version} (pairingId/secret
- * null, omitted on the wire). Every POLL after that sends {@code clientId} + {@code pairingId} +
- * {@code pairingSecret} together — only all three together may claim the token; the clientId alone
- * cannot.
+ * <p>The {@code pairingSecret} is the <b>pre-shared</b> workspace secret the admin issued alongside the
+ * client id; it is sent on <b>every</b> request (CREATE and POLL) and the platform verifies it. A CREATE
+ * (no {@code pairingId}) sends {@code clientId} + {@code pairingSecret} + {@code name} + {@code version};
+ * a POLL adds the {@code pairingId} the CREATE returned. {@code clientId} alone never yields a token.
  */
 public record PairRequest(String clientId, String name, String version, String pairingId, String pairingSecret) {
 
-    /** The initial claim: identify the workspace and this instance, ask to be paired. */
-    public static PairRequest first(final String clientId, final String name, final String version) {
-        return new PairRequest(clientId, name, version, null, null);
+    /** CREATE: identify the workspace + this instance and prove identity with the pre-shared secret. */
+    public static PairRequest create(final String clientId, final String pairingSecret, final String name, final String version) {
+        return new PairRequest(clientId, name, version, null, pairingSecret);
     }
 
-    /** A poll for the outcome of an in-flight pairing, proving instance identity with the secret. */
+    /** POLL: ask for the outcome of the in-flight pairing, re-proving with the pre-shared secret. */
     public static PairRequest poll(final String clientId, final String pairingId, final String pairingSecret) {
         return new PairRequest(clientId, null, null, pairingId, pairingSecret);
     }

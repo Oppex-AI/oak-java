@@ -34,16 +34,16 @@ class PairMappingTest {
             .serializationInclusion(JsonInclude.Include.NON_NULL).build();
 
     @Test
-    void firstRequestOmitsPairingCredentials() throws Exception {
-        final String json = mapper.writeValueAsString(PairRequest.first("client-123", "oak-service", "0.1.0"));
+    void createRequestCarriesThePreSharedSecretAndNoPairingId() throws Exception {
+        final String json = mapper.writeValueAsString(PairRequest.create("client-123", "secret-1", "oak-service", "0.1.0"));
         assertTrue(json.contains("\"clientId\":\"client-123\""));
         assertTrue(json.contains("\"name\":\"oak-service\""));
+        assertTrue(json.contains("\"pairingSecret\":\"secret-1\""));
         assertFalse(json.contains("pairingId"));
-        assertFalse(json.contains("pairingSecret"));
     }
 
     @Test
-    void pollRequestCarriesAllThreeCredentials() throws Exception {
+    void pollRequestCarriesIdAndSecretButNotName() throws Exception {
         final String json = mapper.writeValueAsString(PairRequest.poll("client-123", "pair-1", "secret-1"));
         assertTrue(json.contains("\"clientId\":\"client-123\""));
         assertTrue(json.contains("\"pairingId\":\"pair-1\""));
@@ -54,12 +54,11 @@ class PairMappingTest {
     @Test
     void pendingResponseParses() throws Exception {
         final String wire = """
-                {"success":true,"code":200,"data":{"status":"PENDING_APPROVAL","pairingId":"p1","pairingSecret":"s1"}}""";
+                {"success":true,"code":200,"data":{"status":"PENDING_APPROVAL","pairingId":"p1"}}""";
         final ApiResponse<PairResponse> r = mapper.readValue(wire, new TypeReference<ApiResponse<PairResponse>>() {
         });
         assertEquals(PairStatus.PENDING_APPROVAL, r.data().status());
         assertEquals("p1", r.data().pairingId());
-        assertEquals("s1", r.data().pairingSecret());
     }
 
     @Test
