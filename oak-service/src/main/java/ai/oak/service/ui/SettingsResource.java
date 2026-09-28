@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * Sets a platform's connection from the management page: the base URL and the workspace client id used
- * to pair (and, for dev/manual bootstrap, an optional pre-issued API key). Secrets are persisted
+ * to pair. Secrets are persisted
  * encrypted, never baked into the image; the executor re-pairs / re-registers immediately. Write-only
  * for secrets — they are never read back.
  */
@@ -49,7 +49,7 @@ public class SettingsResource {
                 ? req.platform().trim()
                 : defaultPlatform();
         store.update(platform, req == null ? null : req.baseUrl(), req == null ? null : req.clientId(),
-                req == null ? null : req.pairingSecret(), req == null ? null : req.apiKey());
+                req == null ? null : req.pairingSecret());
         agent.reconnect(platform);
         return Map.of("ok", true, "platform", platform);
     }
@@ -58,7 +58,7 @@ public class SettingsResource {
         return store.names().stream().findFirst().orElse("oppex");
     }
 
-    /** Inbound settings. A blank {@code pairingSecret}/{@code apiKey} keeps the current one. */
-    public record SettingsRequest(String platform, String baseUrl, String clientId, String pairingSecret, String apiKey) {
+    /** Inbound settings. A blank {@code pairingSecret} keeps the current one. */
+    public record SettingsRequest(String platform, String baseUrl, String clientId, String pairingSecret) {
     }
 }

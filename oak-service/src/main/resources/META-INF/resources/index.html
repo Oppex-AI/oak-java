@@ -128,8 +128,7 @@
             <label for="inName">Platform</label><input id="inName" placeholder="oppex">
             <label for="inBaseUrl">Base URL</label><input id="inBaseUrl" class="mono" placeholder="http://localhost:8975">
             <label for="inClientId">Client ID</label><input id="inClientId" class="mono" placeholder="oak_0cd990… — from the platform's OAK page">
-            <label for="inPairingSecret">Pairing secret</label><input id="inPairingSecret" type="password" placeholder="the one-time secret issued with the client id">
-            <label for="inApiKey">API key</label><input id="inApiKey" type="password" placeholder="optional dev override — skips pairing">
+            <label for="inPairingSecret">Pairing secret</label><input id="inPairingSecret" type="password" placeholder="the secret issued with the client id">
             <span></span><span><button class="btn" id="saveBtn">Save &amp; connect</button></span>
           </div>
           <div id="saveMsg" class="sub" style="margin:12px 0 0"></div>
@@ -253,9 +252,9 @@
       try {
         const res = await fetch("api/settings", { method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ platform: $("inName").value.trim() || "oppex", baseUrl: $("inBaseUrl").value.trim(),
-            clientId: $("inClientId").value.trim(), pairingSecret: $("inPairingSecret").value, apiKey: $("inApiKey").value }) });
+            clientId: $("inClientId").value.trim(), pairingSecret: $("inPairingSecret").value }) });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        $("inPairingSecret").value = ""; $("inApiKey").value = "";
+        $("inPairingSecret").value = "";
         $("saveMsg").textContent = "Saved. Connecting… check the Dashboard.";
       } catch (e) { $("saveMsg").textContent = "Save failed: " + e.message; }
     };

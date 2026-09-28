@@ -102,7 +102,7 @@ the pre-shared one).
 Implemented in `oak-service` (`ai.oak.service.connection.PlatformConnection`):
 
 - Configured with base URL + client id + pairing secret (`oak.platforms.<name>.*`, or the management
-  page). An optional `api-key` is a dev override that skips pairing entirely.
+  page). Pairing is the only way to a token — there is no pre-set-key bypass.
 - CREATE when it has no `pairingId`; otherwise POLL, backing off 5s → 30s.
 - `APPROVED` → persist token + connectionId (encrypted), register, poll for steps.
 - `EXPIRED` → re-CREATE. `REJECTED`/`UNKNOWN` → fail and surface (no blind retry). `DISCONNECTED` →

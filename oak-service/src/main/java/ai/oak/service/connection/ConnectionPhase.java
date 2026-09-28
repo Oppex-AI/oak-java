@@ -17,7 +17,7 @@ package ai.oak.service.connection;
 
 /** Where a platform connection is in its lifecycle, for logs and the management UI. */
 public enum ConnectionPhase {
-    /** Not enough config to connect (no base URL, and no client id or bootstrap key). */
+    /** Not enough config to connect (no base URL, or no client id + pairing secret). */
     IDLE,
     /** Starting a pairing attempt. */
     PAIRING,

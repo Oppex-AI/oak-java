@@ -21,7 +21,7 @@ package ai.oak.service.connection;
  * persisted, and updated as pairing progresses. Read by the connection thread and the UI, so every
  * accessor is synchronised.
  *
- * <p>The {@code pairingSecret}, {@code token} and {@code apiKeyBootstrap} are secrets — persisted
+ * <p>The {@code pairingSecret} and {@code token} are secrets — persisted
  * encrypted and never logged.
  */
 public final class PlatformState {
@@ -29,7 +29,6 @@ public final class PlatformState {
     private final String name;
     private String baseUrl;
     private String clientId;
-    private String apiKeyBootstrap;
     private String pairingId;
     private String pairingSecret;
     private String token;
@@ -58,14 +57,6 @@ public final class PlatformState {
 
     public synchronized void setClientId(final String clientId) {
         this.clientId = trimToNull(clientId);
-    }
-
-    public synchronized String apiKeyBootstrap() {
-        return apiKeyBootstrap;
-    }
-
-    public synchronized void setApiKeyBootstrap(final String apiKeyBootstrap) {
-        this.apiKeyBootstrap = trimToNull(apiKeyBootstrap);
     }
 
     /** The pre-shared workspace pairing secret (from config or the UI), sent on every pairing call. */
@@ -116,11 +107,6 @@ public final class PlatformState {
 
     public synchronized void setTokenDelivered(final boolean tokenDelivered) {
         this.tokenDelivered = tokenDelivered;
-    }
-
-    /** The credential to authenticate with: the paired token if present, else the bootstrap key. */
-    public synchronized String effectiveToken() {
-        return token != null ? token : apiKeyBootstrap;
     }
 
     private static String trimToNull(final String s) {

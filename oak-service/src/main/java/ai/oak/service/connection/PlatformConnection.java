@@ -56,8 +56,6 @@ public final class PlatformConnection {
     private static final long PAIR_POLL_INITIAL_MS = 5_000;
     private static final long PAIR_POLL_MAX_MS = 30_000;
     private static final long RETRY_SHORT_MS = 5_000;
-    private static final long RETRY_LONG_MS = 60_000;
-    private static final long FRESH_PAIR_DELAY_MS = 15_000;
 
     /** The dependencies shared by every platform connection; bundled so the constructor stays small. */
     public record Context(ConnectionStore store, ToolRegistry registry, ExecutorService workers, AgentStatus status,
@@ -121,10 +119,12 @@ public final class PlatformConnection {
         ctx.status().meta(name, baseUrl, state.clientId(), state.token() != null);
         client = new ToolServiceClient(baseUrl, name);
 
-        String token = state.effectiveToken();
+        // Approval-based pairing is the only way to a token. Reuse a
+        // previously paired token if we have one; otherwise pair (which needs a client id + secret).
+        String token = state.token();
         if (token == null) {
             if (state.clientId() == null || state.pairingSecret() == null) {
-                idle("set a client id and pairing secret (to pair), or an API key");
+                idle("set a client id and pairing secret to pair");
                 return;
             }
             token = pair();
@@ -272,18 +272,13 @@ public final class PlatformConnection {
         }
     }
 
+    /** A 401 on register/steps means the admin disconnected us (token revoked): drop it and re-pair. */
     private void onUnauthorized(final String where) {
-        if (state.token() != null) {
-            state.clearToken();
-            ctx.store().persist(state);
-            ctx.status().phase(name, ConnectionPhase.DISCONNECTED, "disconnected by platform; re-pairing");
-            LOG.warn("[{}] connection disconnected by platform ({}) — re-pairing required", name, where);
-            scheduleRetry(RETRY_SHORT_MS);
-        } else {
-            ctx.status().error(name, ConnectionPhase.ERROR, "API key rejected");
-            LOG.error("[{}] bootstrap API key rejected ({}); check the key", name, where);
-            scheduleRetry(RETRY_LONG_MS);
-        }
+        state.clearToken();
+        ctx.store().persist(state);
+        ctx.status().phase(name, ConnectionPhase.DISCONNECTED, "disconnected by platform; re-pairing");
+        LOG.warn("[{}] connection disconnected by platform ({}) — re-pairing required", name, where);
+        scheduleRetry(RETRY_SHORT_MS);
     }
 
     // --- step execution (on the shared worker pool) ------------------------------------------------

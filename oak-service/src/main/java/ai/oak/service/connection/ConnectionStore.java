@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>On startup each platform's state is seeded from {@link OakConfig}, then overlaid by a persisted
  * {@code <data-dir>/connections/<name>.json} if one exists (so a pasted URL / an earned token survive a
- * restart). Secrets — the pairing secret, the token, the bootstrap key — are written through
+ * restart). Secrets — the pairing secret and the token — are written through
  * {@link SecretStore} (encrypted); ids and URLs are written in the clear.
  */
 @ApplicationScoped
@@ -71,7 +71,6 @@ public class ConnectionStore {
             state.setBaseUrl(entry.getValue().baseUrl().orElse(null));
             entry.getValue().clientId().ifPresent(state::setClientId);
             entry.getValue().pairingSecret().ifPresent(state::setPairingSecret);
-            entry.getValue().apiKey().ifPresent(state::setApiKeyBootstrap);
             loadPersisted(state);
             states.put(entry.getKey(), state);
         }
@@ -87,12 +86,11 @@ public class ConnectionStore {
     }
 
     /**
-     * UI edit: change how a platform is reached. A blank {@code pairingSecret}/{@code apiKey} keeps the
-     * current one. Changing the identity (URL or client id) drops the earned token and any in-flight
-     * pairing; changing just the secret drops the in-flight pairing but keeps a working token.
+     * UI edit: change how a platform is reached. A blank {@code pairingSecret} keeps the current one.
+     * Changing the identity (URL or client id) drops the earned token and any in-flight pairing; changing
+     * just the secret drops the in-flight pairing but keeps a working token.
      */
-    public synchronized void update(final String name, final String baseUrl, final String clientId, final String pairingSecret,
-            final String apiKey) {
+    public synchronized void update(final String name, final String baseUrl, final String clientId, final String pairingSecret) {
         final PlatformState state = states.computeIfAbsent(name, PlatformState::new);
         final boolean identityChanged = !equalsTrimmed(state.baseUrl(), baseUrl) || !equalsTrimmed(state.clientId(), clientId);
         final boolean secretChanged = pairingSecret != null && !pairingSecret.isBlank() &&
@@ -101,9 +99,6 @@ public class ConnectionStore {
         state.setClientId(clientId);
         if (pairingSecret != null && !pairingSecret.isBlank()) {
             state.setPairingSecret(pairingSecret);
-        }
-        if (apiKey != null && !apiKey.isBlank()) {
-            state.setApiKeyBootstrap(apiKey);
         }
         if (identityChanged) {
             state.clearToken();
@@ -121,7 +116,6 @@ public class ConnectionStore {
             final ObjectNode node = mapper.createObjectNode();
             putIfPresent(node, "baseUrl", state.baseUrl());
             putIfPresent(node, "clientId", state.clientId());
-            putIfPresent(node, "apiKeyBootstrap", secrets.encrypt(state.apiKeyBootstrap()));
             putIfPresent(node, "pairingId", state.pairingId());
             putIfPresent(node, "pairingSecret", secrets.encrypt(state.pairingSecret()));
             putIfPresent(node, "token", secrets.encrypt(state.token()));
@@ -155,9 +149,6 @@ public class ConnectionStore {
         }
         if (node.hasNonNull("clientId")) {
             state.setClientId(node.get("clientId").asText());
-        }
-        if (node.hasNonNull("apiKeyBootstrap")) {
-            state.setApiKeyBootstrap(secrets.decrypt(node.get("apiKeyBootstrap").asText()));
         }
         if (node.hasNonNull("pairingSecret")) {
             state.setPairingSecret(secrets.decrypt(node.get("pairingSecret").asText()));

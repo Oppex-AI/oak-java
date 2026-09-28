@@ -37,8 +37,8 @@ import java.util.Optional;
  * (the service calls the platform, never the reverse), over the JDK HTTP client.
  *
  * <p>{@link #pair} is anonymous — it is how the service earns its token. Every other call is
- * authenticated with that token in {@code X-API-KEY}; set it with {@link #setToken} once pairing (or a
- * bootstrap key) provides one. A {@code 401} on an authenticated call surfaces as an
+ * authenticated with that token in {@code X-API-KEY}; set it with {@link #setToken} once pairing
+ * provides one. A {@code 401} on an authenticated call surfaces as an
  * {@link UnauthorizedException} so the caller can drop the token and re-pair.
  */
 public final class ToolServiceClient implements AutoCloseable {
@@ -75,7 +75,7 @@ public final class ToolServiceClient implements AutoCloseable {
                 .serializationInclusion(JsonInclude.Include.NON_NULL).build();
     }
 
-    /** Sets the token used for authenticated calls (from pairing, or a bootstrap key). */
+    /** Sets the token used for authenticated calls (obtained from pairing). */
     public void setToken(final String token) {
         this.token = token;
     }

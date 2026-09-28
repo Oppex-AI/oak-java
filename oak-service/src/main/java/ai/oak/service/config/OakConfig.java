@@ -69,12 +69,6 @@ public interface OakConfig {
          * when the admin regenerates it. Distinct from the runtime API token, and never sent on register/steps.
          */
         Optional<String> pairingSecret();
-
-        /**
-         * A pre-issued API key. Dev / manual override only: when set, pairing is skipped and this key is used
-         * directly. Normal deployments leave this empty and pair on the {@link #clientId()} + secret.
-         */
-        Optional<String> apiKey();
     }
 
     /** How this service identifies itself at registration. */
