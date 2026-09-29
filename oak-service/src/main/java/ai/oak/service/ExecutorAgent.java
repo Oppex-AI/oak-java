@@ -67,6 +67,10 @@ public class ExecutorAgent {
     void onStart(@Observes final StartupEvent event) {
         registry = catalog.registry();
         status.wired(registry.all().stream().map(Tool::capability).toList());
+        // Generate + persist the AWS external id up front so it exists in the data dir from first boot and
+        // survives restarts/updates — the client's role trust policy is built around this stable value.
+        LOG.info("AWS external id: {} (in {}/tool-settings.json)", toolSettings.ensureExternalId("AWS"),
+                config.dataDir().filter(d -> !d.isBlank()).orElse("~/.oak"));
         workers = Executors.newFixedThreadPool(Math.max(1, config.poll().workerThreads()), r -> {
             final Thread t = new Thread(r, "oak-worker");
             t.setDaemon(true);
