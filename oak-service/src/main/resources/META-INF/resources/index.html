@@ -276,6 +276,42 @@
       Object.keys(TOOL_FIELDS).forEach(g => { $("tsBtn_" + g).onclick = () => saveToolSettings(g); });
     }
 
+    const AWS_POLICY = JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+        Effect: "Allow",
+        Action: [
+          "ec2:DescribeInstances", "ec2:DescribeInstanceStatus", "ec2:StartInstances", "ec2:StopInstances", "ec2:RebootInstances",
+          "rds:DescribeDBInstances", "rds:DescribeEvents", "rds:StartDBInstance", "rds:StopDBInstance", "rds:RebootDBInstance", "rds:CreateDBSnapshot",
+          "cloudwatch:DescribeAlarms", "cloudwatch:GetMetricStatistics", "logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogGroups",
+          "s3:ListAllMyBuckets", "s3:ListBucket", "s3:GetObject", "s3:DeleteObject",
+          "elasticache:DescribeCacheClusters", "elasticache:DescribeReplicationGroups", "elasticache:DescribeEvents", "elasticache:RebootCacheCluster",
+          "kafka:ListClusters", "kafka:DescribeCluster", "kafka:ListNodes", "kafka:GetBootstrapBrokers", "kafka:RebootBroker"
+        ],
+        Resource: "*"
+      }]
+    }, null, 2);
+
+    const GROUP_HELP = {
+      AWS: `<p><b>oak-service runs the <span class="mono">aws</span> CLI on this host, with this host's own AWS
+        credentials</b> — the platform never reaches into your account. Pick one:</p>
+        <ul style="margin:6px 0 8px 18px;padding:0">
+          <li><b>Running on an AWS host</b> (EC2 / ECS / EKS): use the instance/task role — leave the keys blank, set
+            just <b>Region</b>, and attach the permissions below to that role. Nothing secret is stored here.</li>
+          <li><b>Elsewhere</b>: set <b>Profile</b> to one in this host's <span class="mono">~/.aws/config</span>
+            (supports SSO — run <span class="mono">aws sso login</span> — and assume-role), or paste temporary keys.</li>
+        </ul>
+        <p>The built-in tools do read <i>and</i> write/destructive actions (start/stop/reboot/snapshot/delete), so the
+        role/user needs matching IAM permissions:</p>
+        <details><summary class="mono" style="cursor:pointer">Sample IAM permissions policy (built-in tools)</summary>
+        <div class="pre" style="margin-top:8px;white-space:pre;max-height:220px;overflow:auto">${esc(AWS_POLICY)}</div></details>`,
+      Docker: `<p><b>oak-service runs the <span class="mono">docker</span> CLI against this host's Docker daemon.</b>
+        Leave <b>Docker host</b> blank to use the default local socket; set it (e.g.
+        <span class="mono">tcp://host:2375</span> or a non-default <span class="mono">unix://</span> socket) only to
+        target a different daemon. Docker uses <i>this</i> section only — the AWS settings above do not apply to
+        <span class="mono">docker</span> commands.</p>`
+    };
+
     function toolGroupForm(group, view) {
       const values = (view.values) || {};
       const secretsSet = (view.secretsSet) || [];
@@ -287,7 +323,8 @@
           : esc(f.ph || "");
         return `<label for="${id}">${esc(f.label)}</label><input id="${id}" ${f.secret ? 'type="password"' : 'class="mono"'} value="${val}" placeholder="${ph}">`;
       }).join("");
-      return `<div class="card"><h2>${esc(group)}</h2><div class="kv">${rows}
+      const help = GROUP_HELP[group] ? `<div class="sub" style="margin:0 0 14px">${GROUP_HELP[group]}</div>` : "";
+      return `<div class="card"><h2>${esc(group)} setup</h2>${help}<div class="kv">${rows}
         <span></span><span><button class="btn" id="tsBtn_${group}">Save ${esc(group)} settings</button></span></div>
         <div class="sub" id="tsMsg_${group}" style="margin:12px 0 0"></div></div>`;
     }
