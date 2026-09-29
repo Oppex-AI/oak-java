@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
@@ -159,13 +160,28 @@ public class SecretStore {
         }
         final byte[] fresh = new byte[length];
         random.nextBytes(fresh);
-        Files.write(file, fresh);
+        writeAtomic(file, fresh);
+        return fresh;
+    }
+
+    /**
+     * Write {@code bytes} to {@code file} atomically (temp file, then rename) with {@code 0600}. Atomicity
+     * matters because a half-written {@code oak.key} — say a crash mid-write — would come back the wrong
+     * length on the next boot and be regenerated, silently orphaning everything encrypted with the old key.
+     */
+    private void writeAtomic(final Path file, final byte[] bytes) throws IOException {
+        final Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        Files.write(tmp, bytes);
         try {
-            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+            Files.setPosixFilePermissions(tmp, PosixFilePermissions.fromString("rw-------"));
         } catch (IOException | UnsupportedOperationException ignore) {
             // non-POSIX filesystem — best effort
         }
-        return fresh;
+        try {
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException | UnsupportedOperationException e) {
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /** Unchecked wrapper so {@link #init} can funnel both IO and crypto setup failures into one catch. */

@@ -142,7 +142,12 @@ public class ConnectionStore {
         }
     }
 
-    /** Overlay a persisted document onto the config-seeded state, decrypting the secret fields. */
+    /**
+     * Overlay a persisted document onto the config-seeded state, decrypting the secret fields. Each secret
+     * is decrypted independently: if the encryption key changed since it was written (a rotated/lost {@code
+     * oak.key}), that one field is skipped with an actionable warning rather than discarding the whole
+     * record — so the client id and URL survive and the operator just needs to re-pair.
+     */
     private void overlay(final PlatformState state, final JsonNode node) {
         if (node.hasNonNull("baseUrl")) {
             state.setBaseUrl(node.get("baseUrl").asText());
@@ -151,15 +156,32 @@ public class ConnectionStore {
             state.setClientId(node.get("clientId").asText());
         }
         if (node.hasNonNull("pairingSecret")) {
-            state.setPairingSecret(secrets.decrypt(node.get("pairingSecret").asText()));
+            final String secret = tryDecrypt(node.get("pairingSecret").asText(), state.name(), "pairing secret");
+            if (secret != null) {
+                state.setPairingSecret(secret);
+            }
         }
         if (node.hasNonNull("pairingId")) {
             state.setPairingId(node.get("pairingId").asText());
         }
         if (node.hasNonNull("token")) {
-            state.setToken(secrets.decrypt(node.get("token").asText()), textOrNull(node, "connectionId"));
+            final String token = tryDecrypt(node.get("token").asText(), state.name(), "token");
+            if (token != null) {
+                state.setToken(token, textOrNull(node, "connectionId"));
+            }
         }
         state.setTokenDelivered(node.path("tokenDelivered").asBoolean(state.token() != null));
+    }
+
+    /** Decrypt one persisted secret, or null (with an actionable log) if the encryption key no longer matches. */
+    private String tryDecrypt(final String ciphertext, final String platform, final String what) {
+        try {
+            return secrets.decrypt(ciphertext);
+        } catch (IllegalStateException e) {
+            LOG.warn("[{}] saved {} could not be decrypted — the encryption key changed (a new oak.key, or a new " +
+                    "OAK_SECRET_PASSPHRASE). Re-pair from Settings to restore the connection.", platform, what);
+            return null;
+        }
     }
 
     private Path file(final String name) {
