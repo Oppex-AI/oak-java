@@ -124,8 +124,8 @@ public interface OakConfig {
         /** Regions to scan. Empty falls back to the AWS setting's region, else one unspecified scan. */
         Optional<List<String>> regions();
 
-        /** Which resource types to include. Extend as collectors are added (RDS, ElastiCache, MSK, ...). */
-        @WithDefault("EC2_INSTANCE")
+        /** Which resource types to include. Extend as collectors are added (ElastiCache, MSK, ECS, ...). */
+        @WithDefault("EC2_INSTANCE,RDS_INSTANCE,DOCKER_CONTAINER")
         List<String> resourceTypes();
     }
 }

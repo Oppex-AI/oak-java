@@ -36,20 +36,23 @@ import org.slf4j.LoggerFactory;
 /**
  * Enumerates the infrastructure this service can see and returns it as a {@link DiscoverySnapshot} of
  * plain facts. It is the "eyes" half of the service: it reports what exists and never interprets it —
- * tags are passed through verbatim, no resource is mapped to a logical service, nothing is filtered to
- * "relevant". All of that is the platform's job.
+ * tags/labels are passed through verbatim, no resource is mapped to a logical service, nothing is filtered
+ * to "relevant". All of that is the platform's job.
  *
  * <p>It reads through the same AWS CLI + assumed-role credentials the AWS tools use (via
- * {@link ToolExecutor}), forcing {@code --output json} so parsing is deterministic. Resources are sorted
- * by type then id so an unchanged environment yields an identical array between cycles. Best-effort: a
- * region or service that errors is logged and skipped, never fatal. New resource types (RDS, ElastiCache,
- * MSK, ECS) slot in as more {@code collect*} helpers.
+ * {@link ToolExecutor}), forcing {@code --output json} so parsing is deterministic. It reports EC2
+ * instances, RDS instances, and — via {@link HostContainerScanner} over SSM — the Docker containers
+ * running inside each reachable instance. Resources are sorted by type then id so an unchanged environment
+ * yields an identical array between cycles. Best-effort: a region, service or host that errors is logged
+ * and skipped, never fatal.
  */
 @ApplicationScoped
 public class DiscoveryCollector {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiscoveryCollector.class);
     private static final String EC2_INSTANCE = "EC2_INSTANCE";
+    private static final String RDS_INSTANCE = "RDS_INSTANCE";
+    private static final String DOCKER_CONTAINER = "DOCKER_CONTAINER";
 
     @Inject
     OakConfig config;
@@ -60,19 +63,27 @@ public class DiscoveryCollector {
     @Inject
     ToolSettings toolSettings;
 
+    @Inject
+    HostContainerScanner containers;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Collect a full snapshot across the configured regions. AWS env is resolved once (role assumed once). */
     public DiscoverySnapshot collect() {
         final Map<String, String> env = executor.envForCapability("AWS_EC2_DESCRIBE_INSTANCES");
-        final List<DiscoveredResource> resources = new ArrayList<>();
         final List<String> types = config.discovery().resourceTypes();
+        final List<DiscoveredResource> resources = new ArrayList<>();
         for (final String region : regions()) {
-            if (types.contains(EC2_INSTANCE)) {
-                collectEc2(region, env, resources);
+            final List<DiscoveredResource> ec2 = types.contains(EC2_INSTANCE) ? collectEc2(region, env) : List.of();
+            resources.addAll(ec2);
+            if (types.contains(RDS_INSTANCE)) {
+                resources.addAll(collectRds(region, env));
+            }
+            if (types.contains(DOCKER_CONTAINER)) {
+                resources.addAll(collectContainers(region, env, ec2));
             }
         }
-        resources.sort(Comparator.comparing(DiscoveredResource::type).thenComparing(DiscoveredResource::id));
+        resources.sort(Comparator.comparing(DiscoveredResource::getType).thenComparing(DiscoveredResource::getId));
         return new DiscoverySnapshot(Instant.now().toString(), resources);
     }
 
@@ -86,13 +97,12 @@ public class DiscoveryCollector {
         return region == null || region.isBlank() ? List.of("") : List.of(region);
     }
 
-    private void collectEc2(final String region, final Map<String, String> env, final List<DiscoveredResource> out) {
+    private List<DiscoveredResource> collectEc2(final String region, final Map<String, String> env) {
         final JsonNode root = runJson(argv("ec2", "describe-instances", region), env, region, "EC2 instances");
         if (root == null) {
-            return;
+            return new ArrayList<>();
         }
-        final Map<String, String> asgByInstance = collectAsgMembership(region, env);
-        out.addAll(parseInstances(root, region, asgByInstance));
+        return parseInstances(root, region, collectAsgMembership(region, env));
     }
 
     /** Map a {@code describe-instances} response to resources — the pure, testable core of EC2 collection. */
@@ -106,11 +116,66 @@ public class DiscoveryCollector {
         return out;
     }
 
-    private static DiscoveredResource toEc2Resource(final JsonNode instance, final String region, final Map<String, String> asg) {
-        final String id = text(instance, "InstanceId");
-        final String state = instance.path("State").path("Name").asText("");
-        return new DiscoveredResource(EC2_INSTANCE, id, blankToNull(region), blankToNull(state),
-                text(instance, "PrivateIpAddress"), tagsOf(instance), asg.get(id));
+    private static DiscoveredResource toEc2Resource(final JsonNode node, final String region, final Map<String, String> asg) {
+        final String id = text(node, "InstanceId");
+        final Map<String, Object> facts = new LinkedHashMap<>();
+        put(facts, "region", region);
+        put(facts, "state", node.path("State").path("Name").asText(null));
+        put(facts, "instanceType", text(node, "InstanceType"));
+        put(facts, "privateIp", text(node, "PrivateIpAddress"));
+        put(facts, "publicIp", text(node, "PublicIpAddress"));
+        put(facts, "availabilityZone", node.path("Placement").path("AvailabilityZone").asText(null));
+        put(facts, "imageId", text(node, "ImageId"));
+        put(facts, "vpcId", text(node, "VpcId"));
+        put(facts, "subnetId", text(node, "SubnetId"));
+        put(facts, "launchTime", text(node, "LaunchTime"));
+        putMap(facts, "tags", tagsOf(node, "Tags"));
+        put(facts, "asg", asg.get(id));
+        return new DiscoveredResource(EC2_INSTANCE, id, facts);
+    }
+
+    private List<DiscoveredResource> collectRds(final String region, final Map<String, String> env) {
+        final JsonNode root = runJson(argv("rds", "describe-db-instances", region), env, region, "RDS instances");
+        return root == null ? new ArrayList<>() : parseDbInstances(root, region);
+    }
+
+    /** Map a {@code describe-db-instances} response to resources — the pure, testable core of RDS collection. */
+    static List<DiscoveredResource> parseDbInstances(final JsonNode root, final String region) {
+        final List<DiscoveredResource> out = new ArrayList<>();
+        for (final JsonNode db : root.path("DBInstances")) {
+            out.add(toDbResource(db, region));
+        }
+        return out;
+    }
+
+    private static DiscoveredResource toDbResource(final JsonNode node, final String region) {
+        final Map<String, Object> facts = new LinkedHashMap<>();
+        put(facts, "region", region);
+        put(facts, "state", text(node, "DBInstanceStatus"));
+        put(facts, "engine", text(node, "Engine"));
+        put(facts, "engineVersion", text(node, "EngineVersion"));
+        put(facts, "dbInstanceClass", text(node, "DBInstanceClass"));
+        put(facts, "endpoint", node.path("Endpoint").path("Address").asText(null));
+        final JsonNode port = node.path("Endpoint").path("Port");
+        if (port.isInt()) {
+            facts.put("port", port.asInt());
+        }
+        put(facts, "availabilityZone", text(node, "AvailabilityZone"));
+        facts.put("multiAz", node.path("MultiAZ").asBoolean(false));
+        putMap(facts, "tags", tagsOf(node, "TagList"));
+        return new DiscoveredResource(RDS_INSTANCE, text(node, "DBInstanceIdentifier"), facts);
+    }
+
+    /** Docker containers inside each running EC2 instance, via SSM. Fail-open per host (see the scanner). */
+    private List<DiscoveredResource> collectContainers(final String region, final Map<String, String> env,
+            final List<DiscoveredResource> ec2) {
+        final List<DiscoveredResource> out = new ArrayList<>();
+        for (final DiscoveredResource host : ec2) {
+            if (EC2_INSTANCE.equals(host.getType()) && "running".equals(host.getFacts().get("state"))) {
+                out.addAll(containers.scan(host.getId(), region, env));
+            }
+        }
+        return out;
     }
 
     /** instanceId → ASG name, so an instance can report its group. Empty if none / the call fails. */
@@ -131,9 +196,9 @@ public class DiscoveryCollector {
         return byInstance;
     }
 
-    private static Map<String, String> tagsOf(final JsonNode instance) {
+    private static Map<String, String> tagsOf(final JsonNode node, final String field) {
         final Map<String, String> tags = new LinkedHashMap<>();
-        for (final JsonNode tag : instance.path("Tags")) {
+        for (final JsonNode tag : node.path(field)) {
             tags.put(tag.path("Key").asText(""), tag.path("Value").asText(""));
         }
         return tags;
@@ -164,11 +229,20 @@ public class DiscoveryCollector {
         }
     }
 
-    private static String text(final JsonNode node, final String field) {
-        return blankToNull(node.path(field).asText(""));
+    private static void put(final Map<String, Object> facts, final String key, final Object value) {
+        if (value != null && !(value instanceof String s && s.isBlank())) {
+            facts.put(key, value);
+        }
     }
 
-    private static String blankToNull(final String value) {
-        return value == null || value.isBlank() ? null : value;
+    private static void putMap(final Map<String, Object> facts, final String key, final Map<String, String> value) {
+        if (value != null && !value.isEmpty()) {
+            facts.put(key, value);
+        }
+    }
+
+    private static String text(final JsonNode node, final String field) {
+        final String value = node.path(field).asText("");
+        return value.isBlank() ? null : value;
     }
 }

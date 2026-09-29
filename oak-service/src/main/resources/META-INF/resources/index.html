@@ -228,20 +228,37 @@
       } catch (e) { $("discovery").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
     }
     function discoveryReport(r) {
-      const rows = (r.resources || []).map(x => `<tr>
-        <td class="mono">${esc(x.type)}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.region ?? "—")}</td>
-        <td>${esc(x.state ?? "—")}</td><td class="mono">${esc(x.privateIp ?? "—")}</td><td class="mono">${esc(x.asg ?? "—")}</td>
-        <td>${tagsHtml(x.tags)}</td></tr>`).join("");
+      const byType = {};
+      (r.resources || []).forEach(x => (byType[x.type] = byType[x.type] || []).push(x));
+      const groups = Object.keys(byType).sort().map(t => typeTable(t, byType[t])).join("");
       return `<div class="card">
         <div class="plhead"><span class="nm">${esc(r.platform)} <span class="cnt">· ${r.resourceCount} resource(s)</span></span>
           <span class="badge ${r.changed ? "b-ok" : "b-idle"}">${r.changed ? "changed" : "unchanged"}</span></div>
         <div class="sub" style="margin:0 0 8px">Reported ${fmt(r.at)}</div>
-        ${rows ? `<table><thead><tr><th>Type</th><th>Id</th><th>Region</th><th>State</th><th>Private IP</th><th>ASG</th><th>Tags</th></tr></thead>
-          <tbody>${rows}</tbody></table>` : '<div class="empty">No resources found.</div>'}</div>`;
+        ${groups || '<div class="empty">No resources found.</div>'}</div>`;
     }
-    function tagsHtml(tags) {
-      const entries = Object.entries(tags || {});
-      return entries.length ? entries.map(([k, v]) => `<span class="chip">${esc(k)}=${esc(v)}</span>`).join(" ") : "—";
+    // Resources of one type share fields; columns are derived from the facts present, so EC2 / RDS /
+    // containers each render their own detail without hardcoding a schema. Map facts (tags, labels) are chips.
+    function typeTable(type, items) {
+      const scalar = [], maps = [], seen = {};
+      items.forEach(x => Object.keys(x).forEach(k => {
+        if (k === "type" || k === "id" || seen[k]) return;
+        seen[k] = 1;
+        (x[k] && typeof x[k] === "object" ? maps : scalar).push(k);
+      }));
+      const headers = ["id", ...scalar, ...maps].map(h => `<th>${esc(h)}</th>`).join("");
+      const rows = items.map(x => {
+        const cells = [`<td class="mono">${esc(x.id)}</td>`];
+        scalar.forEach(k => cells.push(`<td>${esc(x[k] ?? "—")}</td>`));
+        maps.forEach(k => cells.push(`<td>${mapChips(x[k])}</td>`));
+        return `<tr>${cells.join("")}</tr>`;
+      }).join("");
+      return `<div class="lbl">${esc(type)} <span class="cnt">(${items.length})</span></div>
+        <table style="margin-bottom:12px;display:block;overflow-x:auto"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function mapChips(m) {
+      const e = Object.entries(m || {});
+      return e.length ? e.map(([k, v]) => `<span class="chip">${esc(k)}=${esc(v)}</span>`).join(" ") : "—";
     }
     function kv(obj) { return Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`).join(""); }
 
