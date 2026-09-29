@@ -352,7 +352,8 @@ public final class PlatformConnection {
     // --- step execution (on the shared worker pool) ------------------------------------------------
 
     private void handle(final RemoteStep step) {
-        LOG.info("[{}] step {}/{} received: {}", name, step.workflowId(), step.taskId(), step.capability());
+        LOG.info("[{}] step {}/{} received: {} input={}", name, step.workflowId(), step.taskId(), step.capability(),
+                step.input());
         final Outcome o = runAndReport(step);
         LOG.info("[{}] step {}/{} {} -> {}{}", name, step.workflowId(), step.taskId(), step.capability(), o.label(),
                 o.note() == null ? "" : " (" + o.note() + ")");
@@ -414,6 +415,11 @@ public final class PlatformConnection {
         }
         final boolean ok = result.success();
         final String note = ok ? null : (result.timedOut() ? "timed out" : "exit " + result.exitCode());
+        if (!ok) {
+            LOG.warn("[{}] step {}/{} {} failed ({}); ran: {} | stderr: {}", name, step.workflowId(), step.taskId(),
+                    step.capability(), note, ctx.registry().render(step.capability(), step.input()).orElse("<no render>"),
+                    snippet(result.stderr()));
+        }
         client.reportResult(new RemoteStepResultRequest(step.workflowId(), step.taskId(),
                 ok ? TaskStatus.SUCCESS : TaskStatus.FAILED, outputOf(result), note));
         return new Outcome(ok ? "SUCCESS" : "FAILED", note);
@@ -448,6 +454,15 @@ public final class PlatformConnection {
 
     private static RemoteStepResultRequest failed(final RemoteStep step, final String note) {
         return new RemoteStepResultRequest(step.workflowId(), step.taskId(), TaskStatus.FAILED, Map.of(), note);
+    }
+
+    /** A one-line, length-bounded view of command output for a log line. */
+    private static String snippet(final String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        final String flat = text.strip().replace('\n', ' ');
+        return flat.length() > 300 ? flat.substring(0, 300) + "…" : flat;
     }
 
     private static Map<String, Object> outputOf(final ToolResult result) {
