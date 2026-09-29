@@ -59,4 +59,9 @@ public final class ToolRegistry {
     public Optional<ToolResult> execute(final String capability, final Map<String, Object> input) {
         return find(capability).map(tool -> tool.execute(input));
     }
+
+    /** Runs a capability with extra environment applied, or empty when no registered tool provides it. */
+    public Optional<ToolResult> execute(final String capability, final Map<String, Object> input, final Map<String, String> env) {
+        return find(capability).map(tool -> tool.execute(input, env));
+    }
 }

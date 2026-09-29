@@ -82,7 +82,8 @@ public class ToolCatalog {
                 t.permission().name(), t.description(), t.inputKeys(), preview(t))).toList();
     }
 
-    private static String groupOf(final String capability) {
+    /** The provider group a capability belongs to (AWS / Docker / Other), from its id prefix. */
+    public static String groupOf(final String capability) {
         if (capability.startsWith("AWS_")) {
             return "AWS";
         }

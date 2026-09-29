@@ -54,6 +54,9 @@ public class ExecutorAgent {
     @Inject
     ToolCatalog catalog;
 
+    @Inject
+    ToolSettings toolSettings;
+
     private final Map<String, PlatformConnection> connections = new ConcurrentHashMap<>();
     private ToolRegistry registry;
     private ExecutorService workers;
@@ -99,7 +102,8 @@ public class ExecutorAgent {
 
     private PlatformConnection newConnection(final String name) {
         final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status,
-                config.service().name(), config.service().version(), config.poll().interval().toMillis());
-        return new PlatformConnection(name, store.get(name), ctx);
+                config.service().name(), config.service().version(),
+                capability -> toolSettings.envFor(ToolCatalog.groupOf(capability)));
+        return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis());
     }
 }

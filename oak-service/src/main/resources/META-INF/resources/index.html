@@ -139,6 +139,13 @@
           <div class="sub" style="margin-top:10px">These are read from configuration today; editing more of them
             from here comes later.</div>
         </div>
+
+        <h2 class="section">Tool execution settings</h2>
+        <div class="sub" style="margin:-8px 0 12px">How tools reach your cloud when a step runs. For AWS, the
+          simplest path is a profile whose role/SSO is set up in this host's <span class="mono">~/.aws/config</span>
+          (run <span class="mono">aws sso login</span> for it); or provide explicit keys. Secrets are stored
+          encrypted and never shown back.</div>
+        <div id="toolsettings"></div>
       </section>
     </main>
   </div>
@@ -246,6 +253,56 @@
           "Poll interval": d.pollInterval, "Worker threads": d.workerThreads,
           "AWS tools": d.awsEnabled ? "enabled" : "disabled", "Docker tools": d.dockerEnabled ? "enabled" : "disabled" });
       } catch (e) { $("setinfo").innerHTML = '<dd class="empty">Could not load: ' + esc(e.message) + "</dd>"; }
+      loadToolSettings();
+    }
+
+    // Known env fields per group, rendered on the Settings page (the store itself is generic).
+    const TOOL_FIELDS = {
+      AWS: [
+        { env: "AWS_REGION", label: "Region", ph: "us-west-2" },
+        { env: "AWS_PROFILE", label: "Profile", ph: "dev — role/SSO from ~/.aws/config" },
+        { env: "AWS_ROLE_ARN", label: "Role ARN", ph: "arn:aws:iam::…:role/…" },
+        { env: "AWS_ACCESS_KEY_ID", label: "Access key ID", secret: true },
+        { env: "AWS_SECRET_ACCESS_KEY", label: "Secret access key", secret: true },
+        { env: "AWS_SESSION_TOKEN", label: "Session token", secret: true }
+      ],
+      Docker: [{ env: "DOCKER_HOST", label: "Docker host", ph: "unix:///var/run/docker.sock or tcp://host:2375" }]
+    };
+
+    async function loadToolSettings() {
+      let data = {};
+      try { data = await (await fetch("api/tool-settings", { cache: "no-store" })).json(); } catch (e) { /* show empty */ }
+      $("toolsettings").innerHTML = Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, data[g] || {})).join("");
+      Object.keys(TOOL_FIELDS).forEach(g => { $("tsBtn_" + g).onclick = () => saveToolSettings(g); });
+    }
+
+    function toolGroupForm(group, view) {
+      const values = (view.values) || {};
+      const secretsSet = (view.secretsSet) || [];
+      const rows = TOOL_FIELDS[group].map(f => {
+        const id = "ts_" + group + "_" + f.env;
+        const val = f.secret ? "" : esc(values[f.env] || "");
+        const ph = f.secret
+          ? (secretsSet.includes(f.env) ? "configured — blank keeps it" : "not set")
+          : esc(f.ph || "");
+        return `<label for="${id}">${esc(f.label)}</label><input id="${id}" ${f.secret ? 'type="password"' : 'class="mono"'} value="${val}" placeholder="${ph}">`;
+      }).join("");
+      return `<div class="card"><h2>${esc(group)}</h2><div class="kv">${rows}
+        <span></span><span><button class="btn" id="tsBtn_${group}">Save ${esc(group)} settings</button></span></div>
+        <div class="sub" id="tsMsg_${group}" style="margin:12px 0 0"></div></div>`;
+    }
+
+    async function saveToolSettings(group) {
+      $("tsMsg_" + group).textContent = "Saving…";
+      const env = {};
+      TOOL_FIELDS[group].forEach(f => { env[f.env] = $("ts_" + group + "_" + f.env).value; });
+      try {
+        const res = await fetch("api/tool-settings", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ group, env }) });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        $("tsMsg_" + group).textContent = "Saved. Applies to the next step.";
+        TOOL_FIELDS[group].forEach(f => { if (f.secret) $("ts_" + group + "_" + f.env).value = ""; });
+      } catch (e) { $("tsMsg_" + group).textContent = "Save failed: " + e.message; }
     }
     $("saveBtn").onclick = async () => {
       $("saveMsg").textContent = "Saving…";

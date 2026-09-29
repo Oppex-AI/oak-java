@@ -38,6 +38,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,9 +58,13 @@ public final class PlatformConnection {
     private static final long PAIR_POLL_MAX_MS = 30_000;
     private static final long RETRY_SHORT_MS = 5_000;
 
-    /** The dependencies shared by every platform connection; bundled so the constructor stays small. */
+    /**
+     * The dependencies shared by every platform connection; bundled so the constructor stays small.
+     * {@code env} maps a capability to the extra environment its tool should run with (the client's AWS /
+     * docker settings), applied when a step executes.
+     */
     public record Context(ConnectionStore store, ToolRegistry registry, ExecutorService workers, AgentStatus status,
-            String serviceName, String serviceVersion, long pollIntervalMs) {
+            String serviceName, String serviceVersion, Function<String, Map<String, String>> env) {
     }
 
     private final String name;
@@ -72,11 +77,11 @@ public final class PlatformConnection {
     private volatile ToolServiceClient client;
     private volatile Future<?> pollTask;
 
-    public PlatformConnection(final String name, final PlatformState state, final Context ctx) {
+    public PlatformConnection(final String name, final PlatformState state, final Context ctx, final long pollIntervalMs) {
         this.name = name;
         this.state = state;
         this.ctx = ctx;
-        this.pollIntervalMs = Math.max(1_000, ctx.pollIntervalMs());
+        this.pollIntervalMs = Math.max(1_000, pollIntervalMs);
         this.control = Executors.newSingleThreadScheduledExecutor(r -> {
             final Thread t = new Thread(r, "oak-conn-" + name);
             t.setDaemon(true);
@@ -294,7 +299,8 @@ public final class PlatformConnection {
 
     private Outcome runAndReport(final RemoteStep step) {
         try {
-            return report(step, ctx.registry().execute(step.capability(), step.input()).orElse(null));
+            final Map<String, String> env = ctx.env() == null ? Map.of() : ctx.env().apply(step.capability());
+            return report(step, ctx.registry().execute(step.capability(), step.input(), env).orElse(null));
         } catch (UnauthorizedException e) {
             control.execute(() -> {
                 cancelPolling();

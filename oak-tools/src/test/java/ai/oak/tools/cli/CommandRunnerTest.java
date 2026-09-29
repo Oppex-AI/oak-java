@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import ai.oak.tools.ToolResult;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -69,10 +70,18 @@ class CommandRunnerTest {
 
     @Test
     void aCommandOverItsTimeBudgetIsKilledAndReportedTimedOut() {
-        final ToolResult result = CommandRunner.run(List.of("sh", "-c", "sleep 5"), Duration.ofMillis(200));
+        final ToolResult result = CommandRunner.run(List.of("sh", "-c", "sleep 5"), Map.of(), Duration.ofMillis(200));
         assertTrue(result.timedOut());
         assertFalse(result.success());
         assertEquals(-1, result.exitCode());
+    }
+
+    @Test
+    void extraEnvironmentReachesTheProcess() {
+        final ToolResult result = CommandRunner.run(List.of("sh", "-c", "printf %s \"$OAK_TEST_VAR\""),
+                Map.of("OAK_TEST_VAR", "hello-env"));
+        assertEquals(0, result.exitCode());
+        assertEquals("hello-env", result.stdout());
     }
 
     @Test

@@ -40,6 +40,11 @@ public abstract class CommandTool implements Tool {
 
     @Override
     public ToolResult execute(final Map<String, Object> input) {
-        return CommandRunner.run(command(input).argv());
+        return execute(input, Map.of());
+    }
+
+    @Override
+    public ToolResult execute(final Map<String, Object> input, final Map<String, String> env) {
+        return CommandRunner.run(command(input).argv(), env);
     }
 }

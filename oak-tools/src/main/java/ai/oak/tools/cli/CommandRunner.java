@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -47,19 +48,28 @@ public final class CommandRunner {
     private CommandRunner() {
     }
 
-    /** Runs {@code argv} with the {@link #DEFAULT_TIMEOUT}. */
+    /** Runs {@code argv} with the {@link #DEFAULT_TIMEOUT} and no extra environment. */
     public static ToolResult run(final List<String> argv) {
-        return run(argv, DEFAULT_TIMEOUT);
+        return run(argv, Map.of(), DEFAULT_TIMEOUT);
     }
 
-    /** Runs {@code argv} (program first), killing it and returning a timed-out result past {@code timeout}. */
-    public static ToolResult run(final List<String> argv, final Duration timeout) {
+    /** Runs {@code argv} with extra environment variables merged onto the process environment. */
+    public static ToolResult run(final List<String> argv, final Map<String, String> env) {
+        return run(argv, env, DEFAULT_TIMEOUT);
+    }
+
+    /**
+     * Runs {@code argv} (program first) with {@code env} merged onto the inherited environment, killing it
+     * and returning a timed-out result past {@code timeout}. {@code env} is how per-deployment settings —
+     * an AWS profile/region, docker host — reach the CLI the tool shells out to.
+     */
+    public static ToolResult run(final List<String> argv, final Map<String, String> env, final Duration timeout) {
         if (argv == null || argv.isEmpty()) {
             throw new IllegalArgumentException("command must not be empty");
         }
         final Process process;
         try {
-            process = new ProcessBuilder(argv).start();
+            process = start(argv, env);
         } catch (IOException e) {
             // The binary is not installed or not on PATH. That is a real, reportable outcome for the
             // step (e.g. "docker: command not found"), not a crash of the executor.
@@ -81,6 +91,18 @@ public final class CommandRunner {
             Thread.currentThread().interrupt();
             return new ToolResult(-1, await(stdout), "interrupted while waiting for the command", false);
         }
+    }
+
+    private static Process start(final List<String> argv, final Map<String, String> env) throws IOException {
+        final ProcessBuilder builder = new ProcessBuilder(argv);
+        if (env != null) {
+            env.forEach((k, v) -> {
+                if (k != null && v != null) {
+                    builder.environment().put(k, v);
+                }
+            });
+        }
+        return builder.start();
     }
 
     private static CompletableFuture<String> drain(final InputStream stream) {

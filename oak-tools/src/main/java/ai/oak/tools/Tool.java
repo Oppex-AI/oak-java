@@ -65,4 +65,13 @@ public interface Tool {
      * genuine failure to attempt the work — e.g. an input that cannot be used to form the command.
      */
     ToolResult execute(Map<String, Object> input);
+
+    /**
+     * Run with extra environment variables applied to the execution (e.g. an AWS profile/region, a docker
+     * host — the per-deployment settings the caller holds). The default ignores them; command-line tools
+     * ({@link CommandTool}) pass them to the process.
+     */
+    default ToolResult execute(Map<String, Object> input, Map<String, String> env) {
+        return execute(input);
+    }
 }
