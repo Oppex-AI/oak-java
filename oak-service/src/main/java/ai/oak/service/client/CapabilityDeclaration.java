@@ -16,11 +16,16 @@
 package ai.oak.service.client;
 
 import ai.oak.tools.ToolPermission;
+import java.util.List;
 
 /**
  * One capability this service advertises at registration: the id a runbook step references, what it
- * does to its target, and a one-line description. {@code permission} serialises to its name
- * (READ/WRITE/DESTRUCTIVE), which matches the platform's enum.
+ * does to its target, a one-line description, and the input keys its tool reads. {@code permission}
+ * serialises to its name (READ/WRITE/DESTRUCTIVE), which matches the platform's enum.
+ *
+ * <p>{@code inputKeys} is the tool's own input contract (e.g. {@code container} for DOCKER_RESTART,
+ * {@code instanceIds}/{@code region} for EC2). The platform's planner emits exactly these keys instead of
+ * guessing them — which is what stops the class of "tool got the wrong parameter name" failures.
  */
-public record CapabilityDeclaration(String capability, ToolPermission permission, String description) {
+public record CapabilityDeclaration(String capability, ToolPermission permission, String description, List<String> inputKeys) {
 }

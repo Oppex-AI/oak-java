@@ -45,7 +45,8 @@ class ProtocolMappingTest {
     @Test
     void registrationRequestSerialisesToTheExpectedShape() throws Exception {
         final var request = new ToolServiceRegistrationRequest("oak-service", "0.1.0",
-                List.of(new CapabilityDeclaration("AWS_EC2_START_INSTANCES", ToolPermission.WRITE, "Start EC2 instances.")));
+                List.of(new CapabilityDeclaration("AWS_EC2_START_INSTANCES", ToolPermission.WRITE, "Start EC2 instances.",
+                        List.of("instanceIds", "region"))));
 
         final String json = mapper.writeValueAsString(request);
         final Map<String, Object> parsed = mapper.readValue(json, new TypeReference<>() {
@@ -58,6 +59,7 @@ class ProtocolMappingTest {
         assertEquals("AWS_EC2_START_INSTANCES", caps.get(0).get("capability"));
         assertEquals("WRITE", caps.get(0).get("permission"));
         assertEquals("Start EC2 instances.", caps.get(0).get("description"));
+        assertEquals(List.of("instanceIds", "region"), caps.get(0).get("inputKeys"));
     }
 
     @Test
