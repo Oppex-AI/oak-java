@@ -16,6 +16,7 @@
 package ai.oak.tools.cli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -61,6 +62,19 @@ class CliTest {
 
         assertEquals("aws ec2 describe-instances", cli.build());
         assertEquals(List.of("aws", "ec2", "describe-instances"), cli.argv());
+    }
+
+    @Test
+    void structuredValuesSerializeAsJsonNotJavaToString() {
+        final var filter = new java.util.LinkedHashMap<String, Object>();
+        filter.put("Name", "tag:Name");
+        filter.put("Values", List.of("product-service"));
+        final Cli cli = Cli.aws("ec2", "describe-instances").opt("--filters", List.of(filter));
+
+        final String expected = "[{\"Name\":\"tag:Name\",\"Values\":[\"product-service\"]}]";
+        // The whole JSON is one argv token (not word-split), and it is valid JSON — not [{Name=..., Values=[...]}].
+        assertEquals(List.of("aws", "ec2", "describe-instances", "--filters", expected), cli.argv());
+        assertFalse(cli.build().contains("Name="), "must not use Java toString form");
     }
 
     @Test

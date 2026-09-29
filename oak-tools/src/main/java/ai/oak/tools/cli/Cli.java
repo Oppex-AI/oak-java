@@ -18,6 +18,7 @@ package ai.oak.tools.cli;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Tiny fluent builder for a shell command line (AWS CLI, docker, kubectl, ...), assembled from a
@@ -54,11 +55,14 @@ public final class Cli {
         return new Cli("docker", action);
     }
 
-    /** Optional scalar flag — omitted entirely when the input is absent/blank. */
+    /**
+     * Optional flag — omitted when absent/blank. A structured value (an object or array, e.g. an AWS
+     * {@code --filters} list) is serialised as a single JSON argument; a scalar as its plain string.
+     */
     public Cli opt(final String flag, final Object value) {
         if (present(value)) {
             tokens.add(flag);
-            tokens.add(value.toString());
+            tokens.add(arg(value));
         }
         return this;
     }
@@ -95,7 +99,7 @@ public final class Cli {
 
     /** Required positional argument (e.g. a docker container) — {@code placeholder} when absent. */
     public Cli positional(final Object value, final String placeholder) {
-        tokens.add(present(value) ? value.toString() : placeholder);
+        tokens.add(present(value) ? arg(value) : placeholder);
         return this;
     }
 
@@ -121,14 +125,18 @@ public final class Cli {
         final List<String> out = new ArrayList<>();
         if (value instanceof Collection<?> collection) {
             for (final Object element : collection) {
-                final String token = String.valueOf(element);
-                if (!token.isBlank()) {
-                    out.add(token);
+                if (element != null && !String.valueOf(element).isBlank()) {
+                    out.add(arg(element));
                 }
             }
         } else if (present(value)) {
-            out.add(value.toString());
+            out.add(arg(value));
         }
         return out;
+    }
+
+    /** A single argv token: JSON for a structured value (object/array), the plain string for a scalar. */
+    private static String arg(final Object value) {
+        return (value instanceof Map<?, ?> || value instanceof Collection<?>) ? Json.write(value) : String.valueOf(value);
     }
 }

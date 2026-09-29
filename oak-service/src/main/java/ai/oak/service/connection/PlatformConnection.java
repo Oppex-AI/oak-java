@@ -284,7 +284,10 @@ public final class PlatformConnection {
     // --- step execution (on the shared worker pool) ------------------------------------------------
 
     private void handle(final RemoteStep step) {
+        LOG.info("[{}] step {}/{} received: {}", name, step.workflowId(), step.taskId(), step.capability());
         final Outcome o = runAndReport(step);
+        LOG.info("[{}] step {}/{} {} -> {}{}", name, step.workflowId(), step.taskId(), step.capability(), o.label(),
+                o.note() == null ? "" : " (" + o.note() + ")");
         ctx.status().recordStep(new AgentStatus.StepRecord(Instant.now(), name, step.workflowId(), step.taskId(),
                 step.capability(), o.label(), o.note()));
     }
