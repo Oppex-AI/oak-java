@@ -108,8 +108,9 @@ public class ExecutorAgent {
     }
 
     private PlatformConnection newConnection(final String name) {
-        final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status,
-                config.service().name(), config.service().version(), this::envForCapability);
+        final var service = new PlatformConnection.ServiceId(config.service().name(), config.service().version());
+        final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status, service,
+                this::envForCapability, catalog::isActive);
         return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis());
     }
 

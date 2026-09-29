@@ -60,11 +60,16 @@ public final class PlatformConnection {
 
     /**
      * The dependencies shared by every platform connection; bundled so the constructor stays small.
-     * {@code env} maps a capability to the extra environment its tool should run with (the client's AWS /
-     * docker settings), applied when a step executes.
+     * {@code env} maps a capability to the extra environment its tool runs with (the client's AWS / docker
+     * settings); {@code active} says whether a capability's preconditions are met (only active ones are
+     * advertised and run).
      */
     public record Context(ConnectionStore store, ToolRegistry registry, ExecutorService workers, AgentStatus status,
-            String serviceName, String serviceVersion, Function<String, Map<String, String>> env) {
+            ServiceId service, Function<String, Map<String, String>> env, java.util.function.Predicate<String> active) {
+    }
+
+    /** How this service names itself at registration. */
+    public record ServiceId(String name, String version) {
     }
 
     private final String name;
@@ -174,7 +179,7 @@ public final class PlatformConnection {
         ctx.status().phase(name, ConnectionPhase.PAIRING, "starting pairing");
         LOG.info("[{}] pairing (clientId {})", name, mask(state.clientId()));
         final PairResponse r = client
-                .pair(PairRequest.create(state.clientId(), state.pairingSecret(), ctx.serviceName(), ctx.serviceVersion()));
+                .pair(PairRequest.create(state.clientId(), state.pairingSecret(), ctx.service().name(), ctx.service().version()));
         if (r.status() == PairStatus.PENDING_APPROVAL && r.pairingId() != null) {
             state.setPairingId(r.pairingId());
             ctx.store().persist(state);
@@ -246,10 +251,10 @@ public final class PlatformConnection {
     }
 
     private void registerAndPoll() {
-        final List<CapabilityDeclaration> declared = ctx.registry().all().stream()
+        final List<CapabilityDeclaration> declared = ctx.registry().all().stream().filter(t -> ctx.active().test(t.capability()))
                 .map(t -> new CapabilityDeclaration(t.capability(), t.permission(), t.description())).toList();
         try {
-            client.register(new ToolServiceRegistrationRequest(ctx.serviceName(), ctx.serviceVersion(), declared));
+            client.register(new ToolServiceRegistrationRequest(ctx.service().name(), ctx.service().version(), declared));
             ctx.status().connected(name, state.baseUrl(), state.clientId(), state.connectionId(), true);
             LOG.info("[{}] registered: {} capabilities declared", name, declared.size());
             pollTask = control.scheduleWithFixedDelay(this::pollOnce, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
@@ -299,6 +304,11 @@ public final class PlatformConnection {
 
     private Outcome runAndReport(final RemoteStep step) {
         try {
+            if (!ctx.active().test(step.capability())) {
+                final String note = "capability not active (missing configuration)";
+                client.reportResult(failed(step, note));
+                return new Outcome("FAILED", note);
+            }
             final Map<String, String> env = ctx.env() == null ? Map.of() : ctx.env().apply(step.capability());
             return report(step, ctx.registry().execute(step.capability(), step.input(), env).orElse(null));
         } catch (UnauthorizedException e) {

@@ -42,15 +42,22 @@ public class ToolCatalog {
     @Inject
     OakConfig config;
 
+    @Inject
+    ToolSettings toolSettings;
+
     /** Any customer-supplied {@link Tool} CDI beans, registered after the built-ins so theirs win. */
     @Inject
     Instance<Tool> customTools;
 
     private ToolRegistry registry;
 
-    /** One tool, described for the management UI. {@code preview} is {@link Tool#render} with no input. */
+    /**
+     * One tool, described for the management UI. {@code preview} is {@link Tool#render} with no input.
+     * {@code active} is false when a precondition is missing (e.g. no AWS role linked), with {@code
+     * inactiveReason} saying why; inactive tools are not advertised to the platform and won't run.
+     */
     public record ToolInfo(String group, String service, String capability, String permission, String description,
-            List<String> inputKeys, String preview) {
+            List<String> inputKeys, String preview, boolean active, String inactiveReason) {
     }
 
     @PostConstruct
@@ -76,10 +83,28 @@ public class ToolCatalog {
         return registry;
     }
 
-    /** The catalog for the UI: every tool with its group/service and a render preview. */
+    /** The catalog for the UI: every tool with its group/service, a render preview, and its active state. */
     public List<ToolInfo> list() {
-        return registry.all().stream().map(t -> new ToolInfo(groupOf(t.capability()), serviceOf(t.capability()), t.capability(),
-                t.permission().name(), t.description(), t.inputKeys(), preview(t))).toList();
+        return registry.all().stream()
+                .map(t -> new ToolInfo(groupOf(t.capability()), serviceOf(t.capability()), t.capability(), t.permission().name(),
+                        t.description(), t.inputKeys(), preview(t), isActive(t.capability()), inactiveReason(t.capability())))
+                .toList();
+    }
+
+    /** True when the tool's preconditions are met and it should be advertised and runnable. */
+    public boolean isActive(final String capability) {
+        return inactiveReason(capability) == null;
+    }
+
+    /** Why a tool is inactive, or null when it is active. Today: AWS tools need a linked role. */
+    public String inactiveReason(final String capability) {
+        if ("AWS".equals(groupOf(capability))) {
+            final String roleArn = toolSettings.envFor("AWS").get("AWS_ROLE_ARN");
+            if (roleArn == null || roleArn.isBlank()) {
+                return "link an AWS role in Settings";
+            }
+        }
+        return null;
     }
 
     /** The provider group a capability belongs to (AWS / Docker / Other), from its id prefix. */

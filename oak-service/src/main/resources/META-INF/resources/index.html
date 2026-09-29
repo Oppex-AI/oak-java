@@ -230,9 +230,13 @@
     }
     function toolRow(t) {
       const keys = (t.inputKeys || []).map(k => `<span class="chip">${esc(k)}</span>`).join(" ");
-      return `<div class="tool">
-        <div class="top"><span class="cap">${esc(t.capability)}</span><span class="st perm-${esc(t.permission)}">${esc(t.permission)}</span></div>
-        <div class="desc">${esc(t.description || "")}</div>
+      const inactive = t.active === false;
+      const state = inactive
+        ? `<span class="badge b-idle" title="${esc(t.inactiveReason || "")}">inactive</span>`
+        : `<span class="badge b-ok">active</span>`;
+      return `<div class="tool" style="${inactive ? "opacity:.6" : ""}">
+        <div class="top"><span class="cap">${esc(t.capability)}</span><span class="st perm-${esc(t.permission)}">${esc(t.permission)}</span>${state}</div>
+        <div class="desc">${esc(t.description || "")}${inactive && t.inactiveReason ? ' — <i>' + esc(t.inactiveReason) + "</i>" : ""}</div>
         ${keys ? `<div class="lbl">Inputs</div><div class="chips">${keys}</div>` : ""}
         <div class="lbl">Preview</div><div class="pre">${esc(t.preview || "—")}</div>
       </div>`;
