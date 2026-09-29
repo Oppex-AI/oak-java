@@ -112,8 +112,11 @@ public class HostContainerScanner {
         argv.add("text");
         final ToolResult r = CommandRunner.run(argv, env);
         if (!r.success()) {
-            LOG.warn("discovery: could not scan {} via SSM (not SSM-managed?): {}", instanceId,
-                    r.stderr().isBlank() ? r.stdout() : r.stderr().strip());
+            final String err = r.stderr().isBlank() ? r.stdout() : r.stderr().strip();
+            final String hint = err.contains("AccessDenied") || err.contains("not authorized")
+                    ? "the assumed role is missing ssm:SendCommand — add it to the linked role's policy"
+                    : "host not SSM-managed (no SSM agent / instance profile)?";
+            LOG.warn("discovery: could not scan {} via SSM — {}: {}", instanceId, hint, err);
             return null;
         }
         final String id = r.stdout().trim();

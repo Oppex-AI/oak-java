@@ -271,7 +271,7 @@
       if (containers.length) svc.push(labelledTable("Containers", containers, ["hostInstanceId", "region"]));
       if (processes.length) svc.push(labelledTable("Processes", processes, ["hostInstanceId", "region"]));
       const empty = svc.length ? ""
-        : '<div class="sub" style="margin:2px 0 4px">No containers or processes reported (host not SSM-managed, or none running).</div>';
+        : '<div class="sub" style="margin:2px 0 4px">No containers or processes reported — host not SSM-managed, the linked role lacks ssm:SendCommand, or nothing is running (see the OAK log for the reason).</div>';
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
         <div class="nm mono" style="font-size:13px">🖥 ${esc(host.id)} <span class="cnt" style="font-family:inherit">${esc(name)}${esc(meta)}</span></div>
         ${svc.join("") || empty}</div>`;
