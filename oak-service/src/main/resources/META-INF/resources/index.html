@@ -313,20 +313,33 @@
            on-premise). Configure those, then run <span class="mono">aws sts get-caller-identity</span> on the oak host and
            use its <b>Account</b> in the trust policy Principal below.</div>`;
       return `${runsAs}
-        <p><b>Create a role in the AWS account you want to manage</b>, then link it here. oak assumes it with the External
-        ID and runs the <span class="mono">aws</span> CLI with the temporary credentials — no long-lived keys stored here.</p>
+        <p><b>oak always assumes a dedicated role</b> — it never relies on the host's own permissions. So there are two
+        identities: oak's <b>host identity</b> (the caller) needs <i>only</i> permission to assume the role — no product
+        access; the <b>linked role</b> holds all the tool permissions. This holds whether oak runs in the same account as
+        the resources or a different one — same flow either way.</p>
         <ol style="margin:6px 0 8px 18px;padding:0">
-          <li>In the target account: <b>IAM → Roles → Create role → Another AWS account</b>, enter oak's caller account id
-            (<span class="mono">${esc(acct || "<from get-caller-identity>")}</span>), tick <i>Require external ID</i>, paste the External ID.</li>
-          <li>Attach the <b>permissions policy</b> below — the actions the built-in tools call.</li>
+          <li>In the account you want to manage: <b>IAM → Roles → Create role → Another AWS account</b>, enter oak's caller
+            account id (<span class="mono">${esc(acct || "<from get-caller-identity>")}</span>), tick <i>Require external ID</i>, paste the External ID.</li>
+          <li>Attach the <b>role permissions policy</b> below — the actions the built-in tools call.</li>
+          <li>Grant oak's host identity the <b>assume-role policy</b> below (its only AWS permission).</li>
           <li>Copy the new role's ARN into <b>Role ARN</b>, set <b>Region</b>, and Save.</li>
         </ol>
-        <p class="sub" style="margin:0 0 6px">Tip: to narrow it, replace <span class="mono">:root</span> in the trust policy with the exact
+        <p class="sub" style="margin:0 0 6px">Tip: to narrow the trust, replace <span class="mono">:root</span> with the exact
         role/user ARN oak runs as (an instance-role ARN, or an IAM user ARN — not an SSO session ARN).</p>
-        <details><summary class="mono" style="cursor:pointer">Trust policy</summary>
+        <details><summary class="mono" style="cursor:pointer">Trust policy (on the role)</summary>
           <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(awsTrustPolicy(externalId))}</div></details>
-        <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Permissions policy (built-in tools)</summary>
-          <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(AWS_POLICY)}</div></details>`;
+        <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Role permissions policy (built-in tools)</summary>
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(AWS_POLICY)}</div></details>
+        <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Assume-role policy (on oak's host identity)</summary>
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:160px;overflow:auto">${esc(assumePolicy())}</div></details>`;
+    }
+
+    function assumePolicy() {
+      const roleArn = ($("ts_AWS_AWS_ROLE_ARN") && $("ts_AWS_AWS_ROLE_ARN").value.trim()) || "<the Role ARN below>";
+      return JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{ Effect: "Allow", Action: "sts:AssumeRole", Resource: roleArn }]
+      }, null, 2);
     }
 
     const DOCKER_HELP = `<p><b>oak-service runs the <span class="mono">docker</span> CLI against this host's Docker daemon.</b>
