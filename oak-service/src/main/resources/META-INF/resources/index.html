@@ -227,22 +227,58 @@
           : '<div class="empty">Nothing reported yet. OAK posts a snapshot once connected and an AWS role is linked.</div>';
       } catch (e) { $("discovery").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
     }
+    // Grouped BY HOST: each EC2 instance with the services running on it (its containers, then its host
+    // processes) nested underneath — so "what runs where" reads directly. RDS and anything whose host isn't
+    // in the snapshot are shown as standalone tables.
     function discoveryReport(r) {
-      const byType = {};
-      (r.resources || []).forEach(x => (byType[x.type] = byType[x.type] || []).push(x));
-      const groups = Object.keys(byType).sort().map(t => typeTable(t, byType[t])).join("");
+      const res = r.resources || [];
+      const hosts = res.filter(x => x.type === "EC2_INSTANCE");
+      const containers = res.filter(x => x.type === "DOCKER_CONTAINER");
+      const processes = res.filter(x => x.type === "HOST_PROCESS");
+      const dbs = res.filter(x => x.type === "RDS_INSTANCE");
+      const hostIds = new Set(hosts.map(h => h.id));
+      const known = ["EC2_INSTANCE", "DOCKER_CONTAINER", "HOST_PROCESS", "RDS_INSTANCE"];
+
+      const hostBlocks = hosts.map(h => hostSection(h,
+        containers.filter(c => c.hostInstanceId === h.id),
+        processes.filter(p => p.hostInstanceId === h.id))).join("");
+
+      const standalone = [];
+      if (dbs.length) standalone.push(labelledTable("Databases (RDS)", dbs, []));
+      const orphanC = containers.filter(c => !hostIds.has(c.hostInstanceId));
+      const orphanP = processes.filter(p => !hostIds.has(p.hostInstanceId));
+      if (orphanC.length) standalone.push(labelledTable("Containers (host not in snapshot)", orphanC, []));
+      if (orphanP.length) standalone.push(labelledTable("Processes (host not in snapshot)", orphanP, []));
+      const others = {};
+      res.filter(x => !known.includes(x.type)).forEach(x => (others[x.type] = others[x.type] || []).push(x));
+      Object.keys(others).sort().forEach(t => standalone.push(labelledTable(t, others[t], [])));
+
+      const body = hostBlocks + standalone.join("");
       return `<div class="card">
         <div class="plhead"><span class="nm">${esc(r.platform)} <span class="cnt">· ${r.resourceCount} resource(s)</span></span>
           <span class="badge ${r.changed ? "b-ok" : "b-idle"}">${r.changed ? "changed" : "unchanged"}</span></div>
         <div class="sub" style="margin:0 0 8px">Reported ${fmt(r.at)}</div>
-        ${groups || '<div class="empty">No resources found.</div>'}</div>`;
+        ${body || '<div class="empty">No resources found.</div>'}</div>`;
     }
-    // Resources of one type share fields; columns are derived from the facts present, so EC2 / RDS /
-    // containers each render their own detail without hardcoding a schema. Map facts (tags, labels) are chips.
-    function typeTable(type, items) {
+    function hostSection(host, containers, processes) {
+      const name = (host.tags && host.tags.Name) ? host.tags.Name + " — " : "";
+      const meta = ["state", "instanceType", "availabilityZone", "privateIp"].map(k => host[k]).filter(Boolean).join(" · ");
+      const svc = [];
+      if (containers.length) svc.push(labelledTable("Containers", containers, ["hostInstanceId", "region"]));
+      if (processes.length) svc.push(labelledTable("Processes", processes, ["hostInstanceId", "region"]));
+      const empty = svc.length ? ""
+        : '<div class="sub" style="margin:2px 0 4px">No containers or processes reported (host not SSM-managed, or none running).</div>';
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div class="nm mono" style="font-size:13px">🖥 ${esc(host.id)} <span class="cnt" style="font-family:inherit">${esc(name)}${esc(meta)}</span></div>
+        ${svc.join("") || empty}</div>`;
+    }
+    // Columns are derived from the facts present (minus omitted keys), so each type renders its own detail
+    // without a hardcoded schema. Map facts (tags, labels) render as chips.
+    function labelledTable(label, items, omit) {
+      const skip = new Set(["type", "id", ...(omit || [])]);
       const scalar = [], maps = [], seen = {};
       items.forEach(x => Object.keys(x).forEach(k => {
-        if (k === "type" || k === "id" || seen[k]) return;
+        if (skip.has(k) || seen[k]) return;
         seen[k] = 1;
         (x[k] && typeof x[k] === "object" ? maps : scalar).push(k);
       }));
@@ -253,8 +289,8 @@
         maps.forEach(k => cells.push(`<td>${mapChips(x[k])}</td>`));
         return `<tr>${cells.join("")}</tr>`;
       }).join("");
-      return `<div class="lbl">${esc(type)} <span class="cnt">(${items.length})</span></div>
-        <table style="margin-bottom:12px;display:block;overflow-x:auto"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+      return `<div class="lbl">${esc(label)} <span class="cnt">(${items.length})</span></div>
+        <table style="margin-bottom:8px;display:block;overflow-x:auto"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     }
     function mapChips(m) {
       const e = Object.entries(m || {});
