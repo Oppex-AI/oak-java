@@ -108,6 +108,19 @@ public class ToolSettings {
         persist();
     }
 
+    /** The stable, OAK-generated external id for a group's role trust (created + persisted on first use). */
+    public synchronized String ensureExternalId(final String group) {
+        final Map<String, String> env = new LinkedHashMap<>(byGroup.getOrDefault(group, Map.of()));
+        String id = env.get("OAK_EXTERNAL_ID");
+        if (id == null || id.isBlank()) {
+            id = "oak-" + java.util.UUID.randomUUID();
+            env.put("OAK_EXTERNAL_ID", id);
+            byGroup.put(group, env);
+            persist();
+        }
+        return id;
+    }
+
     public static boolean isSecret(final String key) {
         final String upper = key.toUpperCase(java.util.Locale.ROOT);
         for (final String marker : SECRET_MARKERS) {
