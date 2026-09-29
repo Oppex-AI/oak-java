@@ -120,6 +120,35 @@ class DiscoveryCollectorTest {
     }
 
     @Test
+    void reportsHostProcessesFromPsEf() {
+        final String output = "===OAK_PS===\n" + "UID        PID  PPID  C STIME TTY          TIME CMD\n" +
+                "root         1     0  0 Sep25 ?        00:00:03 /usr/lib/systemd/systemd --system\n" +
+                "root         2     0  0 Sep25 ?        00:00:00 [kthreadd]\n" +
+                "app       1234     1  0 Sep25 ?        00:10:00 java -jar app.jar --server.port=8080\n";
+        final List<DiscoveredResource> procs = HostContainerScanner.parseScan(output, "i-1", "us-west-2", true);
+        assertEquals(2, procs.size(), "header and the [kthreadd] kernel thread skipped, real processes reported");
+        final DiscoveredResource java = procs.get(1);
+        assertEquals("HOST_PROCESS", java.getType());
+        assertEquals("i-1:1234", java.getId(), "id is host:pid so pids stay unique across hosts");
+        assertEquals("1234", java.getFacts().get("pid"));
+        assertEquals("app", java.getFacts().get("user"));
+        assertEquals("java -jar app.jar --server.port=8080", java.getFacts().get("command"));
+        assertEquals("i-1", java.getFacts().get("hostInstanceId"));
+    }
+
+    @Test
+    void reportsContainersAndHostProcessesTogetherSoHostAppsAreNotMissed() {
+        final String output = "{\"ID\":\"9f3c\",\"Names\":\"svc\",\"Image\":\"img\",\"State\":\"running\"}\n" +
+                "===OAK_PS===\nUID PID PPID C STIME TTY TIME CMD\napp 1234 1 0 Sep25 ? 00:10:00 java -jar host-app.jar\n";
+        final List<DiscoveredResource> both = HostContainerScanner.parseScan(output, "i-1", "us-west-2", true);
+        assertEquals(2, both.size(), "the container and the host-native process are both reported");
+
+        final List<DiscoveredResource> containersOnly = HostContainerScanner.parseScan(output, "i-1", "us-west-2", false);
+        assertEquals(1, containersOnly.size());
+        assertEquals("DOCKER_CONTAINER", containersOnly.get(0).getType());
+    }
+
+    @Test
     void orderingIsDeterministicRegardlessOfInputOrder() {
         final String body = "{\"Reservations\":[{\"Instances\":[" +
                 "{\"InstanceId\":\"i-c\"},{\"InstanceId\":\"i-a\"},{\"InstanceId\":\"i-b\"}]}]}";

@@ -127,5 +127,13 @@ public interface OakConfig {
         /** Which resource types to include. Extend as collectors are added (ElastiCache, MSK, ECS, ...). */
         @WithDefault("EC2_INSTANCE,RDS_INSTANCE,DOCKER_CONTAINER")
         List<String> resourceTypes();
+
+        /**
+         * When scanning a host (DOCKER_CONTAINER), also report its bare processes from {@code ps -ef} as
+         * HOST_PROCESS — so apps running directly on the host, not in Docker, are captured. Turn off to
+         * report containers only.
+         */
+        @WithDefault("true")
+        boolean hostProcesses();
     }
 }

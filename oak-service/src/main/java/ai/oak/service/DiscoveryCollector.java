@@ -169,10 +169,11 @@ public class DiscoveryCollector {
     /** Docker containers inside each running EC2 instance, via SSM. Fail-open per host (see the scanner). */
     private List<DiscoveredResource> collectContainers(final String region, final Map<String, String> env,
             final List<DiscoveredResource> ec2) {
+        final boolean withProcesses = config.discovery().hostProcesses();
         final List<DiscoveredResource> out = new ArrayList<>();
         for (final DiscoveredResource host : ec2) {
             if (EC2_INSTANCE.equals(host.getType()) && "running".equals(host.getFacts().get("state"))) {
-                out.addAll(containers.scan(host.getId(), region, env));
+                out.addAll(containers.scan(host.getId(), region, env, withProcesses));
             }
         }
         return out;
