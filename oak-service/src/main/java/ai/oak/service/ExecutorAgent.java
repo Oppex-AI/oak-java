@@ -58,7 +58,7 @@ public class ExecutorAgent {
     ToolSettings toolSettings;
 
     @Inject
-    AwsCredentials awsCredentials;
+    ToolExecutor executor;
 
     private final Map<String, PlatformConnection> connections = new ConcurrentHashMap<>();
     private ToolRegistry registry;
@@ -110,17 +110,7 @@ public class ExecutorAgent {
     private PlatformConnection newConnection(final String name) {
         final var service = new PlatformConnection.ServiceId(config.service().name(), config.service().version());
         final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status, service,
-                this::envForCapability, catalog::isActive);
+                executor::envForCapability, catalog::isActive);
         return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis());
-    }
-
-    /** The environment a tool of this capability runs with. AWS assumes the linked role; others get their env. */
-    private Map<String, String> envForCapability(final String capability) {
-        final String group = ToolCatalog.groupOf(capability);
-        final Map<String, String> raw = toolSettings.envFor(group);
-        if ("AWS".equals(group)) {
-            return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"));
-        }
-        return raw;
     }
 }

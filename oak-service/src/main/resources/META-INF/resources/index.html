@@ -81,6 +81,10 @@
     .tool .desc { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
     .pre { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; overflow-x: auto; }
     .lbl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 8px 0 4px; }
+    .runform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .runform .ri { width: auto; flex: 1 1 160px; min-width: 120px; font-size: 12px; }
+    .runform button.run { flex: 0 0 auto; padding: 7px 14px; }
+    .runout:not(:empty) { margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -234,12 +238,53 @@
       const state = inactive
         ? `<span class="badge b-idle" title="${esc(t.inactiveReason || "")}">inactive</span>`
         : `<span class="badge b-ok">active</span>`;
+      const cap = t.capability;
+      // Only READ tools can be run from here (WRITE/DESTRUCTIVE run only via an approved platform step),
+      // and only when active (their provider is configured). This is also enforced server-side.
+      const runnable = t.permission === "READ" && !inactive;
+      const inputs = (t.inputKeys || []).map(k =>
+        `<input class="ri" data-k="${esc(k)}" placeholder="${esc(k)} (comma-separate a list)">`).join("");
+      const run = runnable ? `
+        <div class="lbl">Run <span class="sub" style="text-transform:none;font-weight:400">— read-only, against the linked account</span></div>
+        <div class="runform" id="rf-${esc(cap)}">${inputs}
+          <button class="btn run" onclick="runTool('${esc(cap)}')">Run</button></div>
+        <div class="runout" id="ro-${esc(cap)}"></div>` : "";
       return `<div class="tool" style="${inactive ? "opacity:.6" : ""}">
-        <div class="top"><span class="cap">${esc(t.capability)}</span><span class="st perm-${esc(t.permission)}">${esc(t.permission)}</span>${state}</div>
+        <div class="top"><span class="cap">${esc(cap)}</span><span class="st perm-${esc(t.permission)}">${esc(t.permission)}</span>${state}</div>
         <div class="desc">${esc(t.description || "")}${inactive && t.inactiveReason ? ' — <i>' + esc(t.inactiveReason) + "</i>" : ""}</div>
         ${keys ? `<div class="lbl">Inputs</div><div class="chips">${keys}</div>` : ""}
         <div class="lbl">Preview</div><div class="pre">${esc(t.preview || "—")}</div>
+        ${run}
       </div>`;
+    }
+    async function runTool(cap) {
+      const form = document.getElementById("rf-" + cap), out = document.getElementById("ro-" + cap);
+      const input = {};
+      form.querySelectorAll(".ri").forEach(i => {
+        const v = i.value.trim();
+        if (v) input[i.dataset.k] = v.includes(",") ? v.split(",").map(s => s.trim()).filter(Boolean) : v;
+      });
+      const btn = form.querySelector("button.run");
+      btn.disabled = true; out.innerHTML = '<div class="sub">Running…</div>';
+      try {
+        const d = await (await fetch("api/tools/run", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ capability: cap, input }) })).json();
+        if (!d.ok) { out.innerHTML = `<div class="banner">${esc(d.error || "failed")}</div>`; return; }
+        renderRunResult(out, d);
+      } catch (e) { out.innerHTML = `<div class="banner">${esc(e.message)}</div>`; }
+      finally { btn.disabled = false; }
+    }
+    function renderRunResult(out, d) {
+      const badge = d.success
+        ? '<span class="badge b-ok">exit 0</span>'
+        : `<span class="badge b-err">exit ${esc(d.exitCode)}${d.timedOut ? " · timed out" : ""}</span>`;
+      let stdout = d.stdout || "";
+      try { if (stdout.trim()) stdout = JSON.stringify(JSON.parse(stdout), null, 2); } catch (e) { /* not JSON */ }
+      let body = `<div style="margin:6px 0">${badge}</div>`;
+      if (stdout.trim()) body += `<div class="pre" style="white-space:pre;max-height:340px;overflow:auto">${esc(stdout)}</div>`;
+      if ((d.stderr || "").trim()) body += `<div class="lbl">stderr</div><div class="pre" style="white-space:pre-wrap">${esc(d.stderr)}</div>`;
+      if (!stdout.trim() && !(d.stderr || "").trim()) body += '<div class="sub">No output.</div>';
+      out.innerHTML = body;
     }
     function wireAccordions() {
       document.querySelectorAll("#toolgroups .acc-h").forEach(h => h.onclick = (e) => {
