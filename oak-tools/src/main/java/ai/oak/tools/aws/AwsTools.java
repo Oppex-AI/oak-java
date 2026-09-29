@@ -22,10 +22,11 @@ import ai.oak.tools.aws.elasticache.ElastiCacheTools;
 import ai.oak.tools.aws.msk.MskTools;
 import ai.oak.tools.aws.rds.RdsTools;
 import ai.oak.tools.aws.s3.S3Tools;
+import ai.oak.tools.aws.ssm.SsmTools;
 
 /**
  * Registers every generic AWS tool into a {@link ToolRegistry} — EC2, RDS, CloudWatch, S3,
- * ElastiCache (Redis) and MSK.
+ * ElastiCache (Redis), MSK and SSM.
  *
  * <p>Delegates to one registrar per service ({@link Ec2Tools}, {@link RdsTools}, ...) rather than
  * naming every tool class here: that keeps this class's fan-out small, and a new service is a new
@@ -43,5 +44,6 @@ public final class AwsTools {
         S3Tools.registerAll(registry);
         ElastiCacheTools.registerAll(registry);
         MskTools.registerAll(registry);
+        SsmTools.registerAll(registry);
     }
 }

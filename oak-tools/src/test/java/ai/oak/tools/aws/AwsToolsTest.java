@@ -40,13 +40,14 @@ class AwsToolsTest {
     @Test
     void registrarWiresEverySupportedAwsService() {
         final ToolRegistry registry = registry();
-        assertEquals(28, registry.all().size());
+        assertEquals(29, registry.all().size());
         assertTrue(registry.has("AWS_EC2_START_INSTANCES"));
         assertTrue(registry.has("AWS_RDS_REBOOT_DB_INSTANCE"));
         assertTrue(registry.has("AWS_CLOUDWATCH_DESCRIBE_ALARMS"));
         assertTrue(registry.has("AWS_S3_LIST_OBJECTS"));
         assertTrue(registry.has("AWS_ELASTICACHE_REBOOT_CACHE_CLUSTER"));
         assertTrue(registry.has("AWS_MSK_DESCRIBE_CLUSTER"));
+        assertTrue(registry.has("AWS_SSM_RUN_COMMAND"));
     }
 
     @Test
