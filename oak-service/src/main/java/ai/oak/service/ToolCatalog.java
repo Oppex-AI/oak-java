@@ -17,6 +17,7 @@ package ai.oak.service;
 
 import ai.oak.service.config.OakConfig;
 import ai.oak.tools.Tool;
+import ai.oak.tools.ToolPermission;
 import ai.oak.tools.ToolRegistry;
 import ai.oak.tools.aws.AwsTools;
 import ai.oak.tools.docker.DockerTools;
@@ -45,6 +46,12 @@ public class ToolCatalog {
     @Inject
     ToolSettings toolSettings;
 
+    @Inject
+    AwsCredentials awsCredentials;
+
+    @Inject
+    SsmRunner ssmRunner;
+
     /** Any customer-supplied {@link Tool} CDI beans, registered after the built-ins so theirs win. */
     @Inject
     Instance<Tool> customTools;
@@ -68,6 +75,7 @@ public class ToolCatalog {
         }
         if (config.tools().dockerEnabled()) {
             DockerTools.registerAll(built);
+            registerHostAwareDocker(built);
         }
         int custom = 0;
         for (final Tool tool : customTools) {
@@ -77,6 +85,32 @@ public class ToolCatalog {
         registry = built;
         LOG.info("Tools: {} total ({} built-in set(s), {} custom bean(s))", built.all().size(),
                 (config.tools().awsEnabled() ? 1 : 0) + (config.tools().dockerEnabled() ? 1 : 0), custom);
+    }
+
+    /**
+     * Override the generic container-targeted docker tools with host-aware ones: given an instanceId they
+     * run on that host via SSM, else locally. Same capability ids, registered after the generic set so they
+     * win (the "customer layer overrides a generic tool" pattern).
+     */
+    private void registerHostAwareDocker(final ToolRegistry built) {
+        final java.util.function.Supplier<Map<String, String>> env = this::awsEnv;
+        built.register(new HostAwareDockerTool("DOCKER_RESTART", "restart", ToolPermission.WRITE, "Restart a container.", false,
+                ssmRunner, env));
+        built.register(new HostAwareDockerTool("DOCKER_START", "start", ToolPermission.WRITE, "Start a container.", false,
+                ssmRunner, env));
+        built.register(
+                new HostAwareDockerTool("DOCKER_STOP", "stop", ToolPermission.WRITE, "Stop a container.", false, ssmRunner, env));
+        built.register(new HostAwareDockerTool("DOCKER_INSPECT", "inspect", ToolPermission.READ,
+                "Show low-level info for a container.", false, ssmRunner, env));
+        built.register(new HostAwareDockerTool("DOCKER_LOGS", "logs", ToolPermission.READ, "Show a container's logs.", true,
+                ssmRunner, env));
+    }
+
+    /** Assumed-role AWS environment for the SSM calls a host-aware docker tool makes. */
+    private Map<String, String> awsEnv() {
+        final Map<String, String> raw = toolSettings.envFor("AWS");
+        return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"),
+                raw.get("AWS_PROFILE"));
     }
 
     public ToolRegistry registry() {
