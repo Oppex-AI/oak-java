@@ -336,7 +336,12 @@
         <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Role permissions policy (built-in tools)</summary>
           <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(AWS_POLICY)}</div></details>
         <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Assume-role policy (on oak's host identity)</summary>
-          <div class="pre" style="margin-top:8px;white-space:pre;max-height:160px;overflow:auto">${esc(assumePolicy())}</div></details>`;
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:160px;overflow:auto">${esc(assumePolicy())}</div></details>
+        <p class="sub" style="margin:8px 0 0"><b>Running commands inside an instance (SSM Run Command):</b> the
+          <span class="mono">AWS_SSM_RUN_COMMAND</span> tool executes shell on the target through AWS Systems Manager — oak
+          never logs into the host. This needs the <b>SSM agent installed and running</b> on the target instance and an IAM
+          <b>instance profile with SSM permissions</b> so the instance is SSM-managed. oak cannot check that ahead of time; if
+          the agent is missing, the step's result says so (<i>the target is not an SSM-managed instance…</i>).</p>`;
     }
 
     function assumePolicy() {

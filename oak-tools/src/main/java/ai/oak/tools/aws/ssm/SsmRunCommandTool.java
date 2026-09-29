@@ -52,6 +52,13 @@ public final class SsmRunCommandTool implements Tool {
     private static final Set<String> TERMINAL = Set.of("Success", "Failed", "Cancelled", "TimedOut", "Undeliverable",
             "Terminated", "Delivery Timed Out");
 
+    /** Statuses that mean SSM could not reach the instance at all — usually no SSM agent / not managed. */
+    private static final Set<String> UNREACHABLE = Set.of("Undeliverable", "Terminated", "Delivery Timed Out");
+
+    /** Why an instance was unreachable — the actionable reason the runbook reports back. */
+    private static final String NOT_MANAGED_HINT = "the target is not an SSM-managed instance: install/start the SSM agent on the host and give it an " +
+            "IAM instance profile with SSM permissions";
+
     @Override
     public String capability() {
         return CAPABILITY;
@@ -87,7 +94,7 @@ public final class SsmRunCommandTool implements Tool {
         final List<String> dispatch = sendCommand(input).opt("--query", "Command.CommandId").opt("--output", "text").argv();
         final ToolResult sent = CommandRunner.run(dispatch, env);
         if (!sent.success()) {
-            return sent;
+            return withNotManagedHint(sent);
         }
         final String commandId = sent.stdout().trim();
         if (commandId.isEmpty()) {
@@ -187,10 +194,23 @@ public final class SsmRunCommandTool implements Tool {
             out.append('[').append(instanceId).append(' ').append(status).append("]\n").append(output(inv)).append('\n');
             if (!"Success".equals(status)) {
                 allSuccess = false;
-                err.append(instanceId).append(": ").append(status).append('\n');
+                err.append(instanceId).append(": ").append(status);
+                err.append(UNREACHABLE.contains(status) ? " — " + NOT_MANAGED_HINT + "\n" : "\n");
             }
         }
         return new ToolResult(allSuccess ? 0 : 1, out.toString().strip(), err.toString().strip(), false);
+    }
+
+    /**
+     * Add the not-managed hint to a failed send-command whose error says the instance is not a valid SSM
+     * target ({@code InvalidInstanceId}) — the send fails outright when no targeted instance runs the agent.
+     */
+    private static ToolResult withNotManagedHint(final ToolResult sent) {
+        final String stderr = sent.stderr() == null ? "" : sent.stderr();
+        if (stderr.contains("InvalidInstanceId") || stderr.contains("not in a valid state")) {
+            return new ToolResult(sent.exitCode(), sent.stdout(), stderr + "\n" + NOT_MANAGED_HINT, sent.timedOut());
+        }
+        return sent;
     }
 
     /** The first command plugin's output for an invocation (the combined stdout/stderr SSM captured). */
