@@ -281,10 +281,28 @@
       let stdout = d.stdout || "";
       try { if (stdout.trim()) stdout = JSON.stringify(JSON.parse(stdout), null, 2); } catch (e) { /* not JSON */ }
       let body = `<div style="margin:6px 0">${badge}</div>`;
+      const hint = d.success ? "" : runHint(d.stderr || "");
+      if (hint) body += `<div class="banner" style="background:var(--warn-bg);color:var(--warn)">${esc(hint)}</div>`;
       if (stdout.trim()) body += `<div class="pre" style="white-space:pre;max-height:340px;overflow:auto">${esc(stdout)}</div>`;
       if ((d.stderr || "").trim()) body += `<div class="lbl">stderr</div><div class="pre" style="white-space:pre-wrap">${esc(d.stderr)}</div>`;
       if (!stdout.trim() && !(d.stderr || "").trim()) body += '<div class="sub">No output.</div>';
       out.innerHTML = body;
+    }
+    // Local, UI-only reading of a failed run's stderr into a likely cause + fix. Never sent anywhere.
+    function runHint(stderr) {
+      const s = (stderr || "").toLowerCase();
+      if (!s.trim()) return "";
+      if (s.includes("token has expired") || s.includes("sso") || (s.includes("token") && s.includes("refresh")))
+        return "Your AWS SSO session on the oak host looks expired — run `aws sso login` there (or ensure oak's instance role can assume the linked role), then Run again.";
+      if (s.includes("sts:assumerole") || (s.includes("assumerole") && s.includes("not authorized")))
+        return "oak's host identity can't assume the linked role — check the role's trust policy (external id + principal) and the assume-role policy on oak's identity.";
+      if (s.includes("unable to locate credentials") || s.includes("invalidclienttokenid") || s.includes("security token") && s.includes("invalid"))
+        return "oak has no valid AWS credentials — configure the host identity (SSO profile or instance role) that assumes the linked role.";
+      if (s.includes("accessdenied") || s.includes("not authorized to perform"))
+        return "The linked role is missing a permission for this action — add it to the role's permissions policy (see the AWS setup in Settings).";
+      if (s.includes("could not connect") || s.includes("command not found") || s.includes("no such file"))
+        return "The AWS CLI isn't installed or reachable on the oak host — install it so oak can run AWS commands.";
+      return "";
     }
     function wireAccordions() {
       document.querySelectorAll("#toolgroups .acc-h").forEach(h => h.onclick = (e) => {
