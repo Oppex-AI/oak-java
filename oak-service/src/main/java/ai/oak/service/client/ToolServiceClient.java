@@ -51,6 +51,7 @@ public final class ToolServiceClient implements AutoCloseable {
     private static final String REGISTER = "/register";
     private static final String NEXT_STEP = "/steps/next";
     private static final String STEP_RESULT = "/steps/result";
+    private static final String DISCOVERY = "/discovery";
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final String baseUrl;
@@ -123,6 +124,17 @@ public final class ToolServiceClient implements AutoCloseable {
     public void reportResult(final RemoteStepResultRequest result) throws IOException, InterruptedException {
         post(STEP_RESULT, result, new TypeReference<ApiResponse<Void>>() {
         });
+    }
+
+    /**
+     * Reports the full infrastructure snapshot (facts only). The platform stores it and does its own
+     * change-detection; this service always sends the complete set, never a diff. The returned
+     * acknowledgement is informational (whether it changed); success is the only thing that matters.
+     */
+    public DiscoverySnapshotResponse postDiscovery(final DiscoverySnapshot snapshot) throws IOException, InterruptedException {
+        final ApiResponse<DiscoverySnapshotResponse> body = post(DISCOVERY, snapshot, new TypeReference<>() {
+        });
+        return body == null ? null : body.data();
     }
 
     public String platformName() {

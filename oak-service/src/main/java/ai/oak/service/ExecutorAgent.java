@@ -60,6 +60,9 @@ public class ExecutorAgent {
     @Inject
     ToolExecutor executor;
 
+    @Inject
+    DiscoveryCollector discovery;
+
     private final Map<String, PlatformConnection> connections = new ConcurrentHashMap<>();
     private ToolRegistry registry;
     private ExecutorService workers;
@@ -109,8 +112,12 @@ public class ExecutorAgent {
 
     private PlatformConnection newConnection(final String name) {
         final var service = new PlatformConnection.ServiceId(config.service().name(), config.service().version());
+        final java.util.function.Supplier<ai.oak.service.client.DiscoverySnapshot> snapshot = config.discovery().enabled()
+                ? discovery::collect
+                : null;
         final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status, service,
-                executor::envForCapability, catalog::isActive);
-        return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis());
+                executor::envForCapability, catalog::isActive, snapshot);
+        return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis(),
+                config.discovery().interval().toMillis());
     }
 }

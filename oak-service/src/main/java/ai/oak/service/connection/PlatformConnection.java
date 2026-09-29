@@ -17,6 +17,8 @@ package ai.oak.service.connection;
 
 import ai.oak.service.AgentStatus;
 import ai.oak.service.client.CapabilityDeclaration;
+import ai.oak.service.client.DiscoverySnapshot;
+import ai.oak.service.client.DiscoverySnapshotResponse;
 import ai.oak.service.client.PairRequest;
 import ai.oak.service.client.PairResponse;
 import ai.oak.service.client.PairStatus;
@@ -57,15 +59,21 @@ public final class PlatformConnection {
     private static final long PAIR_POLL_INITIAL_MS = 5_000;
     private static final long PAIR_POLL_MAX_MS = 30_000;
     private static final long RETRY_SHORT_MS = 5_000;
+    private static final long DISCOVERY_INITIAL_MS = 3_000;
+
+    /** The AWS capability whose active-state gates discovery: no role linked ⇒ nothing to enumerate. */
+    private static final String DISCOVERY_PROBE = "AWS_EC2_DESCRIBE_INSTANCES";
 
     /**
      * The dependencies shared by every platform connection; bundled so the constructor stays small.
      * {@code env} maps a capability to the extra environment its tool runs with (the client's AWS / docker
      * settings); {@code active} says whether a capability's preconditions are met (only active ones are
-     * advertised and run).
+     * advertised and run); {@code discovery} produces the infrastructure snapshot to report, or is null
+     * when discovery is disabled.
      */
     public record Context(ConnectionStore store, ToolRegistry registry, ExecutorService workers, AgentStatus status,
-            ServiceId service, Function<String, Map<String, String>> env, java.util.function.Predicate<String> active) {
+            ServiceId service, Function<String, Map<String, String>> env, java.util.function.Predicate<String> active,
+            java.util.function.Supplier<DiscoverySnapshot> discovery) {
     }
 
     /** How this service names itself at registration. */
@@ -76,17 +84,21 @@ public final class PlatformConnection {
     private final PlatformState state;
     private final Context ctx;
     private final long pollIntervalMs;
+    private final long discoveryIntervalMs;
     private final ScheduledExecutorService control;
 
     private volatile boolean running;
     private volatile ToolServiceClient client;
     private volatile Future<?> pollTask;
+    private volatile Future<?> discoveryTask;
 
-    public PlatformConnection(final String name, final PlatformState state, final Context ctx, final long pollIntervalMs) {
+    public PlatformConnection(final String name, final PlatformState state, final Context ctx, final long pollIntervalMs,
+            final long discoveryIntervalMs) {
         this.name = name;
         this.state = state;
         this.ctx = ctx;
         this.pollIntervalMs = Math.max(1_000, pollIntervalMs);
+        this.discoveryIntervalMs = Math.max(30_000, discoveryIntervalMs);
         this.control = Executors.newSingleThreadScheduledExecutor(r -> {
             final Thread t = new Thread(r, "oak-conn-" + name);
             t.setDaemon(true);
@@ -267,6 +279,7 @@ public final class PlatformConnection {
             ctx.status().connected(name, state.baseUrl(), state.clientId(), state.connectionId(), true);
             LOG.info("[{}] registered: {} capabilities declared", name, declared.size());
             pollTask = control.scheduleWithFixedDelay(this::pollOnce, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
+            scheduleDiscovery();
         } catch (UnauthorizedException e) {
             onUnauthorized("registration");
         } catch (IOException e) {
@@ -289,6 +302,41 @@ public final class PlatformConnection {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Report an infra snapshot shortly after connecting, then on the discovery interval — when enabled. */
+    private void scheduleDiscovery() {
+        if (ctx.discovery() == null) {
+            return;
+        }
+        discoveryTask = control.scheduleWithFixedDelay(this::discoverOnce, DISCOVERY_INITIAL_MS, discoveryIntervalMs,
+                TimeUnit.MILLISECONDS);
+    }
+
+    /** Collect the full infrastructure snapshot and report it. Skips quietly until AWS is configured. */
+    private void discoverOnce() {
+        if (!running || !ctx.active().test(DISCOVERY_PROBE)) {
+            return; // nothing to enumerate yet (no AWS role linked) — try again next cycle
+        }
+        try {
+            final DiscoverySnapshot snapshot = ctx.discovery().get();
+            final DiscoverySnapshotResponse ack = client.postDiscovery(snapshot);
+            LOG.info("[{}] discovery: reported {} resource(s){}", name, snapshot.resources().size(), changedNote(ack));
+        } catch (UnauthorizedException e) {
+            cancelPolling();
+            onUnauthorized("discovery");
+        } catch (IOException e) {
+            LOG.warn("[{}] discovery report failed (will retry next cycle): {}", name, e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String changedNote(final DiscoverySnapshotResponse ack) {
+        if (ack == null) {
+            return "";
+        }
+        return ack.changed() ? " (changed)" : " (unchanged)";
     }
 
     /** A 401 on register/steps means the admin disconnected us (token revoked): drop it and re-pair. */
@@ -377,10 +425,15 @@ public final class PlatformConnection {
     }
 
     private void cancelPolling() {
-        final Future<?> task = pollTask;
-        if (task != null) {
-            task.cancel(false);
+        final Future<?> poll = pollTask;
+        if (poll != null) {
+            poll.cancel(false);
             pollTask = null;
+        }
+        final Future<?> discovery = discoveryTask;
+        if (discovery != null) {
+            discovery.cancel(false);
+            discoveryTask = null;
         }
     }
 

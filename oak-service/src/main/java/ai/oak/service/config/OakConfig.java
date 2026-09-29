@@ -18,6 +18,7 @@ package ai.oak.service.config;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -46,6 +47,8 @@ public interface OakConfig {
     Poll poll();
 
     Tools tools();
+
+    Discovery discovery();
 
     /** One remote orchestration platform this service pairs with and pulls steps from. */
     interface Platform {
@@ -101,5 +104,28 @@ public interface OakConfig {
 
         @WithDefault("true")
         boolean dockerEnabled();
+    }
+
+    /**
+     * Infrastructure discovery: enumerate what exists (facts only) so the platform can decide what to do.
+     * The collector is fact-gathering; the periodic reporting loop to the platform is wired once the
+     * platform's discovery endpoint contract is finalised.
+     */
+    interface Discovery {
+
+        /** Whether discovery collection is available. */
+        @WithDefault("true")
+        boolean enabled();
+
+        /** How often to refresh the snapshot once reporting is wired. */
+        @WithDefault("5m")
+        Duration interval();
+
+        /** Regions to scan. Empty falls back to the AWS setting's region, else one unspecified scan. */
+        Optional<List<String>> regions();
+
+        /** Which resource types to include. Extend as collectors are added (RDS, ElastiCache, MSK, ...). */
+        @WithDefault("EC2_INSTANCE")
+        List<String> resourceTypes();
     }
 }
