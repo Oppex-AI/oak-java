@@ -30,6 +30,10 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +57,8 @@ public class DiscoveryCollector {
     private static final String EC2_INSTANCE = "EC2_INSTANCE";
     private static final String RDS_INSTANCE = "RDS_INSTANCE";
     private static final String DOCKER_CONTAINER = "DOCKER_CONTAINER";
+    /** How many hosts to scan over SSM at once — bounded so discovery never floods SSM. */
+    private static final int MAX_SCAN_CONCURRENCY = 6;
 
     @Inject
     OakConfig config;
@@ -166,14 +172,43 @@ public class DiscoveryCollector {
         return new DiscoveredResource(RDS_INSTANCE, text(node, "DBInstanceIdentifier"), facts);
     }
 
-    /** Docker containers inside each running EC2 instance, via SSM. Fail-open per host (see the scanner). */
+    /**
+     * Containers (and, if enabled, host processes) inside each running EC2 instance, via SSM. Hosts are
+     * scanned concurrently with a small bounded pool so one slow or unreachable host neither blocks nor
+     * slows the others; each scan is fail-open (a failure yields no resources for that host, never throws).
+     */
     private List<DiscoveredResource> collectContainers(final String region, final Map<String, String> env,
             final List<DiscoveredResource> ec2) {
         final boolean withProcesses = config.discovery().hostProcesses();
+        final List<String> hosts = ec2.stream()
+                .filter(h -> EC2_INSTANCE.equals(h.getType()) && "running".equals(h.getFacts().get("state")))
+                .map(DiscoveredResource::getId).toList();
+        if (hosts.isEmpty()) {
+            return List.of();
+        }
+        final ExecutorService pool = Executors.newFixedThreadPool(Math.min(hosts.size(), MAX_SCAN_CONCURRENCY), r -> {
+            final Thread t = new Thread(r, "oak-discovery-scan");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            return gather(hosts.stream().map(id -> pool.submit(() -> containers.scan(id, region, env, withProcesses))).toList());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /** Collect every host scan's results; a task that failed contributes nothing (never fails the batch). */
+    private static List<DiscoveredResource> gather(final List<Future<List<DiscoveredResource>>> futures) {
         final List<DiscoveredResource> out = new ArrayList<>();
-        for (final DiscoveredResource host : ec2) {
-            if (EC2_INSTANCE.equals(host.getType()) && "running".equals(host.getFacts().get("state"))) {
-                out.addAll(containers.scan(host.getId(), region, env, withProcesses));
+        for (final Future<List<DiscoveredResource>> future : futures) {
+            try {
+                out.addAll(future.get());
+            } catch (ExecutionException e) {
+                LOG.warn("discovery: a host scan failed: {}", e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
         return out;
