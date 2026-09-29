@@ -293,7 +293,9 @@
     }, null, 2);
 
     function awsTrustPolicy(externalId) {
-      const principal = OAK_IDENTITY.arn || (OAK_IDENTITY.account ? "arn:aws:iam::" + OAK_IDENTITY.account + ":root" : "<the identity oak-service runs as>");
+      // Always the account ROOT, never the raw caller ARN: an SSO/assumed-role ARN is a session and is
+      // invalid as a trust principal. Root + external id is the safe, standard pattern.
+      const principal = "arn:aws:iam::" + (OAK_IDENTITY.account || "<oak-caller-account-id>") + ":root";
       return JSON.stringify({
         Version: "2012-10-17",
         Statement: [{ Effect: "Allow", Principal: { AWS: principal }, Action: "sts:AssumeRole",
@@ -302,17 +304,25 @@
     }
 
     function awsHelp(externalId) {
-      const who = OAK_IDENTITY.arn ? '<span class="mono">' + esc(OAK_IDENTITY.arn) + "</span>"
-        : "the identity oak-service runs as (its instance role, or your SSO/default identity)";
-      return `<p><b>Link a role in the AWS account you want to manage.</b> oak-service assumes it with the External ID
-        below (source identity: ${who}), then runs the <span class="mono">aws</span> CLI with the temporary
-        credentials — no long-lived keys are stored here.</p>
+      const acct = OAK_IDENTITY.account, arn = OAK_IDENTITY.arn;
+      const runsAs = acct
+        ? `<p>oak-service runs as AWS account <b class="mono">${esc(acct)}</b>${arn ? ' (<span class="mono">' + esc(arn) + "</span>)" : ""} —
+           the trust policy below trusts <span class="mono">arn:aws:iam::${esc(acct)}:root</span>, gated by the External ID.</p>`
+        : `<div class="banner" style="background:var(--warn-bg);color:var(--warn)">oak-service's AWS caller identity isn't
+           detected — it needs base credentials to assume the role (an EC2/ECS role on an AWS host, or IAM user keys / SSO
+           on-premise). Configure those, then run <span class="mono">aws sts get-caller-identity</span> on the oak host and
+           use its <b>Account</b> in the trust policy Principal below.</div>`;
+      return `${runsAs}
+        <p><b>Create a role in the AWS account you want to manage</b>, then link it here. oak assumes it with the External
+        ID and runs the <span class="mono">aws</span> CLI with the temporary credentials — no long-lived keys stored here.</p>
         <ol style="margin:6px 0 8px 18px;padding:0">
-          <li>In that account: <b>IAM → Roles → Create role → Another AWS account</b>, tick <i>Require external ID</i>,
-            and use the <b>trust policy</b> below (it embeds oak's identity + the External ID).</li>
+          <li>In the target account: <b>IAM → Roles → Create role → Another AWS account</b>, enter oak's caller account id
+            (<span class="mono">${esc(acct || "<from get-caller-identity>")}</span>), tick <i>Require external ID</i>, paste the External ID.</li>
           <li>Attach the <b>permissions policy</b> below — the actions the built-in tools call.</li>
-          <li>Paste the role's ARN into <b>Role ARN</b>, set <b>Region</b>, and Save.</li>
+          <li>Copy the new role's ARN into <b>Role ARN</b>, set <b>Region</b>, and Save.</li>
         </ol>
+        <p class="sub" style="margin:0 0 6px">Tip: to narrow it, replace <span class="mono">:root</span> in the trust policy with the exact
+        role/user ARN oak runs as (an instance-role ARN, or an IAM user ARN — not an SSO session ARN).</p>
         <details><summary class="mono" style="cursor:pointer">Trust policy</summary>
           <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(awsTrustPolicy(externalId))}</div></details>
         <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Permissions policy (built-in tools)</summary>
