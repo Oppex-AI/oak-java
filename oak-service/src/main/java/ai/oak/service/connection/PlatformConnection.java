@@ -283,8 +283,8 @@ public final class PlatformConnection {
         } catch (UnauthorizedException e) {
             onUnauthorized("registration");
         } catch (IOException e) {
-            ctx.status().error(name, ConnectionPhase.ERROR, e.getMessage());
-            LOG.warn("[{}] registration failed (will retry): {}", name, e.getMessage());
+            ctx.status().error(name, ConnectionPhase.ERROR, reason(e));
+            LOG.warn("[{}] registration failed (will retry): {}", name, reason(e));
             scheduleRetry(RETRY_SHORT_MS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -298,7 +298,7 @@ public final class PlatformConnection {
             cancelPolling();
             onUnauthorized("poll");
         } catch (IOException e) {
-            LOG.warn("[{}] poll failed (will retry): {}", name, e.getMessage());
+            LOG.warn("[{}] poll failed (will retry): {}", name, reason(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -327,7 +327,7 @@ public final class PlatformConnection {
             cancelPolling();
             onUnauthorized("discovery");
         } catch (IOException e) {
-            LOG.warn("[{}] discovery report failed (will retry next cycle): {}", name, e.getMessage());
+            LOG.warn("[{}] discovery report failed (will retry next cycle): {}", name, reason(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
