@@ -321,6 +321,7 @@ public final class PlatformConnection {
         try {
             final DiscoverySnapshot snapshot = ctx.discovery().get();
             final DiscoverySnapshotResponse ack = client.postDiscovery(snapshot);
+            ctx.status().recordDiscovery(name, snapshot, ack != null && ack.changed());
             LOG.info("[{}] discovery: reported {} resource(s){}", name, snapshot.resources().size(), changedNote(ack));
         } catch (UnauthorizedException e) {
             cancelPolling();

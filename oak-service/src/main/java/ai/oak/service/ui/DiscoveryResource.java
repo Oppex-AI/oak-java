@@ -15,6 +15,7 @@
  */
 package ai.oak.service.ui;
 
+import ai.oak.service.AgentStatus;
 import ai.oak.service.DiscoveryCollector;
 import ai.oak.service.ToolCatalog;
 import ai.oak.service.config.OakConfig;
@@ -24,6 +25,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,6 +48,9 @@ public class DiscoveryResource {
     @Inject
     OakConfig config;
 
+    @Inject
+    AgentStatus status;
+
     @GET
     @Path("/discovery")
     @Produces(MediaType.APPLICATION_JSON)
@@ -64,5 +69,16 @@ public class DiscoveryResource {
         out.put("ok", true);
         out.put("snapshot", collector.collect());
         return out;
+    }
+
+    /**
+     * What discovery actually reported to each platform last — the resources OAK posted, not a fresh scan.
+     * This is the "what has it discovered and sent" view; empty until the first snapshot has been reported.
+     */
+    @GET
+    @Path("/discovery/last")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<AgentStatus.DiscoveryReport> last() {
+        return status.getDiscovery();
     }
 }

@@ -113,6 +113,8 @@
           <thead><tr><th>Time</th><th>Platform</th><th>Workflow / Task</th><th>Capability</th><th>Status</th><th>Note</th></tr></thead>
           <tbody id="recent"><tr><td colspan="6" class="empty">No steps yet.</td></tr></tbody>
         </table>
+        <h2 class="section">Last discovery posted</h2>
+        <div id="discovery"><div class="empty">Nothing reported yet.</div></div>
         <div class="foot" id="dash-foot"></div>
       </section>
 
@@ -214,7 +216,32 @@
           <td><span class="st st-${esc(s.status)}">${esc(s.status)}</span></td><td>${esc(s.note ?? "")}</td></tr>`).join("")
           : '<tr><td colspan="6" class="empty">No steps yet.</td></tr>';
         $("dash-foot").textContent = "Updated " + new Date().toLocaleTimeString();
+        loadDiscovery();
       } catch (e) { $("dash-sub").textContent = "Could not reach the executor: " + e.message; }
+    }
+    async function loadDiscovery() {
+      try {
+        const reports = await (await fetch("api/discovery/last", { cache: "no-store" })).json();
+        $("discovery").innerHTML = (reports && reports.length)
+          ? reports.map(discoveryReport).join("")
+          : '<div class="empty">Nothing reported yet. OAK posts a snapshot once connected and an AWS role is linked.</div>';
+      } catch (e) { $("discovery").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    function discoveryReport(r) {
+      const rows = (r.resources || []).map(x => `<tr>
+        <td class="mono">${esc(x.type)}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.region ?? "—")}</td>
+        <td>${esc(x.state ?? "—")}</td><td class="mono">${esc(x.privateIp ?? "—")}</td><td class="mono">${esc(x.asg ?? "—")}</td>
+        <td>${tagsHtml(x.tags)}</td></tr>`).join("");
+      return `<div class="card">
+        <div class="plhead"><span class="nm">${esc(r.platform)} <span class="cnt">· ${r.resourceCount} resource(s)</span></span>
+          <span class="badge ${r.changed ? "b-ok" : "b-idle"}">${r.changed ? "changed" : "unchanged"}</span></div>
+        <div class="sub" style="margin:0 0 8px">Reported ${fmt(r.at)}</div>
+        ${rows ? `<table><thead><tr><th>Type</th><th>Id</th><th>Region</th><th>State</th><th>Private IP</th><th>ASG</th><th>Tags</th></tr></thead>
+          <tbody>${rows}</tbody></table>` : '<div class="empty">No resources found.</div>'}</div>`;
+    }
+    function tagsHtml(tags) {
+      const entries = Object.entries(tags || {});
+      return entries.length ? entries.map(([k, v]) => `<span class="chip">${esc(k)}=${esc(v)}</span>`).join(" ") : "—";
     }
     function kv(obj) { return Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`).join(""); }
 

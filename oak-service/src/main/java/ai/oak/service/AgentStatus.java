@@ -15,6 +15,8 @@
  */
 package ai.oak.service;
 
+import ai.oak.service.client.DiscoveredResource;
+import ai.oak.service.client.DiscoverySnapshot;
 import ai.oak.service.connection.ConnectionPhase;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
@@ -38,10 +40,16 @@ public class AgentStatus {
     private volatile List<String> advertised = List.of();
     private final Map<String, Conn> connections = new ConcurrentHashMap<>();
     private final Deque<StepRecord> recent = new ArrayDeque<>();
+    private final Map<String, DiscoveryReport> discovery = new ConcurrentHashMap<>();
 
     /** One executed step, for the recent-activity view. */
     public record StepRecord(Instant at, String platform, Long workflowId, Long taskId, String capability, String status,
             String note) {
+    }
+
+    /** The last infrastructure snapshot reported to a platform, for the "what has it discovered" view. */
+    public record DiscoveryReport(String platform, Instant at, int resourceCount, boolean changed,
+            List<DiscoveredResource> resources) {
     }
 
     /** An immutable per-platform view for the UI. Secrets are never here; the client id is masked. */
@@ -124,6 +132,17 @@ public class AgentStatus {
 
     public synchronized List<StepRecord> getRecent() {
         return List.copyOf(recent);
+    }
+
+    /** Record the snapshot just reported to a platform, so the UI can show what was last discovered. */
+    public void recordDiscovery(final String platform, final DiscoverySnapshot snapshot, final boolean changed) {
+        discovery.put(platform,
+                new DiscoveryReport(platform, Instant.now(), snapshot.resources().size(), changed, snapshot.resources()));
+    }
+
+    /** The last discovery report per platform, newest platforms sorted by name. */
+    public List<DiscoveryReport> getDiscovery() {
+        return discovery.values().stream().sorted((a, b) -> a.platform().compareToIgnoreCase(b.platform())).toList();
     }
 
     private Conn conn(final String platform) {
