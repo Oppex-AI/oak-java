@@ -47,7 +47,8 @@ public class ToolExecutor {
         final String group = ToolCatalog.groupOf(capability);
         final Map<String, String> raw = toolSettings.envFor(group);
         if ("AWS".equals(group)) {
-            return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"));
+            return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"),
+                    raw.get("AWS_PROFILE"));
         }
         return raw;
     }

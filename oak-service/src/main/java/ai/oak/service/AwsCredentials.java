@@ -56,18 +56,23 @@ public class AwsCredentials {
      * The environment for AWS tool commands: assumed-role credentials plus the region. On failure (no
      * ambient creds, wrong trust, aws CLI absent) it returns just the region, so the tool still runs and
      * surfaces AWS's own error rather than this masking it.
+     *
+     * <p>{@code profile} is the local AWS CLI profile whose credentials assume the role — the source
+     * identity. It matters when the operator's login is a named profile (e.g. an SSO profile) rather than
+     * the default: without it the CLI resolves the default profile, which may have no active session.
      */
-    public synchronized Map<String, String> assume(final String roleArn, final String externalId, final String region) {
+    public synchronized Map<String, String> assume(final String roleArn, final String externalId, final String region,
+            final String profile) {
         final Map<String, String> regionOnly = regionEnv(region);
         if (roleArn == null || roleArn.isBlank()) {
             return regionOnly;
         }
-        final String key = roleArn + "|" + externalId + "|" + region;
+        final String key = roleArn + "|" + externalId + "|" + region + "|" + profile;
         final Cached hit = cache.get(key);
         if (hit != null && hit.expiry().isAfter(Instant.now().plusSeconds(REFRESH_SKEW_SECONDS))) {
             return hit.env();
         }
-        final ToolResult result = runAssumeRole(roleArn, externalId, region);
+        final ToolResult result = runAssumeRole(roleArn, externalId, region, profile);
         if (!result.success()) {
             LOG.warn("assume-role for {} failed (exit {}): {}", roleArn, result.exitCode(),
                     result.stderr().isBlank() ? result.stdout() : result.stderr());
@@ -83,8 +88,9 @@ public class AwsCredentials {
     }
 
     /** This host's own AWS identity ({account, arn}), for the trust-policy setup instructions. Best-effort. */
-    public Map<String, String> callerIdentity() {
-        final ToolResult r = CommandRunner.run(List.of("aws", "sts", "get-caller-identity", "--output", "json"));
+    public Map<String, String> callerIdentity(final String profile) {
+        final ToolResult r = CommandRunner.run(List.of("aws", "sts", "get-caller-identity", "--output", "json"),
+                sourceEnv(profile));
         if (!r.success()) {
             return Map.of();
         }
@@ -96,7 +102,7 @@ public class AwsCredentials {
         }
     }
 
-    private ToolResult runAssumeRole(final String roleArn, final String externalId, final String region) {
+    private ToolResult runAssumeRole(final String roleArn, final String externalId, final String region, final String profile) {
         final List<String> argv = new ArrayList<>(
                 List.of("aws", "sts", "assume-role", "--role-arn", roleArn, "--role-session-name", "oak-service"));
         if (externalId != null && !externalId.isBlank()) {
@@ -109,7 +115,16 @@ public class AwsCredentials {
         }
         argv.add("--output");
         argv.add("json");
-        return CommandRunner.run(argv);
+        return CommandRunner.run(argv, sourceEnv(profile));
+    }
+
+    /** Env for a source (pre-assume) AWS call: the CLI profile to authenticate as, when one is configured. */
+    private static Map<String, String> sourceEnv(final String profile) {
+        final Map<String, String> env = new LinkedHashMap<>();
+        if (profile != null && !profile.isBlank()) {
+            env.put("AWS_PROFILE", profile);
+        }
+        return env;
     }
 
     private Cached parse(final String stdout, final Map<String, String> regionOnly) {

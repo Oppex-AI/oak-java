@@ -334,7 +334,8 @@
     const TOOL_FIELDS = {
       AWS: [
         { env: "AWS_ROLE_ARN", label: "Role ARN", ph: "arn:aws:iam::<account>:role/oak-runner" },
-        { env: "AWS_REGION", label: "Region", ph: "us-west-2" }
+        { env: "AWS_REGION", label: "Region", ph: "us-west-2" },
+        { env: "AWS_PROFILE", label: "CLI profile (source identity)", ph: "e.g. pranit-dev-admin — local profile whose creds assume the role; blank = default/instance role" }
       ],
       Docker: [{ env: "DOCKER_HOST", label: "Docker host", ph: "unix:///var/run/docker.sock or tcp://host:2375" }]
     };

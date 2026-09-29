@@ -73,7 +73,7 @@ public class ToolSettingsResource {
             final String externalId = "AWS".equals(group) ? settings.ensureExternalId(group) : null;
             out.put(group, new GroupView(values, secretsSet, externalId));
         }
-        return new View(out, aws.callerIdentity());
+        return new View(out, aws.callerIdentity(settings.envFor("AWS").get("AWS_PROFILE")));
     }
 
     @POST
