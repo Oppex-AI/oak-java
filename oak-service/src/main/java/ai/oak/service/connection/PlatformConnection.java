@@ -128,22 +128,31 @@ public final class PlatformConnection {
         }
         ctx.status().meta(name, baseUrl, state.clientId(), state.token() != null);
         client = new ToolServiceClient(baseUrl, name);
-
-        // Approval-based pairing is the only way to a token. Reuse a
-        // previously paired token if we have one; otherwise pair (which needs a client id + secret).
-        String token = state.token();
+        final String token = acquireToken();
         if (token == null) {
-            if (state.clientId() == null || state.pairingSecret() == null) {
-                idle("set a client id and pairing secret to pair");
-                return;
-            }
-            token = pair();
-            if (token == null) {
-                return; // pending / terminal / stopped — pair() handled status + any reschedule
-            }
+            return; // idle / pending / terminal / stopped — acquireToken handled status + any reschedule
         }
         client.setToken(token);
         registerAndPoll();
+    }
+
+    /**
+     * The token to authenticate with: a persisted one from a previous approval (a restart resumes with no
+     * re-pairing and no new approval), or a freshly paired one. Null when not ready — idle for missing
+     * config, or pending/terminal after a pairing attempt (each having set status already).
+     */
+    private String acquireToken() {
+        final String existing = state.token();
+        if (existing != null) {
+            LOG.info("[{}] resuming with a persisted token — no pairing needed (connectionId {})", name,
+                    mask(state.connectionId()));
+            return existing;
+        }
+        if (state.clientId() == null || state.pairingSecret() == null) {
+            idle("set a client id and pairing secret to pair");
+            return null;
+        }
+        return pair();
     }
 
     private void idle(final String reason) {

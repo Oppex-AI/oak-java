@@ -158,8 +158,15 @@
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const fmt = (iso) => { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? esc(iso) : d.toLocaleString(); };
-    const PHASE = { CONNECTED: ["b-ok", "connected"], PENDING_APPROVAL: ["b-warn", "waiting for approval"],
-      PAIRING: ["b-warn", "pairing"], DISCONNECTED: ["b-err", "disconnected"], ERROR: ["b-err", "error"], IDLE: ["b-idle", "idle"] };
+    // [cssClass, label, tooltip] per lifecycle phase.
+    const PHASE = {
+      CONNECTED: ["b-ok", "connected", "Registered and polling the platform for steps."],
+      PENDING_APPROVAL: ["b-warn", "waiting for approval", "Paired — waiting for an admin to approve this client on the platform."],
+      PAIRING: ["b-warn", "pairing", "Pairing handshake in progress."],
+      DISCONNECTED: ["b-err", "disconnected", "Was connected; the platform revoked the token — re-pairing is needed."],
+      ERROR: ["b-err", "error", "A transient error (network, platform down); will retry."],
+      IDLE: ["b-idle", "not connected", "Not connected — needs setup. See the reason on the card."]
+    };
 
     // ---- routing ----
     const views = ["dashboard", "tools", "settings"];
@@ -176,9 +183,9 @@
 
     // ---- dashboard ----
     function platformCard(p) {
-      const [cls, label] = PHASE[p.phase] || ["b-idle", (p.phase || "").toLowerCase()];
+      const [cls, label, tip] = PHASE[p.phase] || ["b-idle", (p.phase || "").toLowerCase(), ""];
       return `<div class="card pl">
-        <div class="plhead"><span class="nm">${esc(p.name)}</span><span class="badge ${cls}">${esc(label)}</span></div>
+        <div class="plhead"><span class="nm">${esc(p.name)}</span><span class="badge ${cls}" title="${esc(tip || "")}">${esc(label)}</span></div>
         <dl class="kv">
           <dt>Base URL</dt><dd class="mono">${esc(p.baseUrl || "not set")}</dd>
           <dt>Client ID</dt><dd class="mono">${esc(p.clientIdMasked || "—")}</dd>
