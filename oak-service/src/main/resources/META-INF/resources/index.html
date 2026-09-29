@@ -54,6 +54,9 @@
     .banner { background: var(--err-bg); color: var(--err); border-radius: 8px; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
     input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; }
     button.btn { padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+    button.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    button.btn.ghost:hover { color: var(--text); background: var(--chip); }
+    .topbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
     table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
     th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
     th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
@@ -99,6 +102,7 @@
     </aside>
 
     <main class="main">
+      <div class="topbar"><button class="btn ghost" id="refreshBtn" title="Refresh this page">⟳ Refresh</button></div>
       <section id="dashboard">
         <h1>Dashboard</h1>
         <div class="sub" id="dash-sub">Loading…</div>
@@ -552,8 +556,12 @@
     };
 
     // ---- boot ----
+    // Re-run the loader for whichever view is showing.
+    function refreshActive() { show(views.find(v => $(v).classList.contains("active")) || "dashboard"); }
+    $("refreshBtn").onclick = refreshActive;
     show(location.hash.slice(1) || "dashboard");
-    setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 5000);
+    // Gentle auto-refresh of the Dashboard every 5 minutes; use the Refresh button for an immediate update.
+    setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 300000);
   </script>
 </body>
 </html>
