@@ -15,6 +15,8 @@
  */
 package ai.oak.tools;
 
+import java.util.Map;
+
 /**
  * The outcome of actually running a {@link Tool} — the counterpart to {@link Tool#render} once a step
  * really executes.
@@ -31,8 +33,20 @@ package ai.oak.tools;
  * @param stderr   everything the command wrote to standard error, verbatim; also carries the reason
  *                 when {@code exitCode} is {@code -1}.
  * @param timedOut true when the command was killed for exceeding its time budget.
+ * @param data     optional extra structured facts about the run that are not the command's own output —
+ *                 e.g. an SSM {@code ssmCommandId} and invocation {@code status} for a step executed on a
+ *                 remote host. Empty for an ordinary local command. Reported verbatim alongside the output.
  */
-public record ToolResult(int exitCode, String stdout, String stderr, boolean timedOut) {
+public record ToolResult(int exitCode, String stdout, String stderr, boolean timedOut, Map<String, Object> data) {
+
+    public ToolResult {
+        data = data == null ? Map.of() : Map.copyOf(data);
+    }
+
+    /** An ordinary command result with no extra structured data. */
+    public ToolResult(final int exitCode, final String stdout, final String stderr, final boolean timedOut) {
+        this(exitCode, stdout, stderr, timedOut, Map.of());
+    }
 
     /** True when the command ran to completion with a zero exit status. */
     public boolean success() {

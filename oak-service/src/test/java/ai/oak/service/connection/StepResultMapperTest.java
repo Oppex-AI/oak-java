@@ -52,6 +52,16 @@ class StepResultMapperTest {
     }
 
     @Test
+    void ssmDataIsCarriedIntoOutput() {
+        final var result = new ToolResult(0, "opx-client-service", "", false,
+                Map.of("ssmCommandId", "abc-123", "status", "Success"));
+        final Map<String, Object> output = StepResultMapper.output(result);
+        assertEquals("abc-123", output.get("ssmCommandId"), "links OAK to AWS Run Command history");
+        assertEquals("Success", output.get("status"));
+        assertEquals("opx-client-service", output.get("stdout"));
+    }
+
+    @Test
     void failedResultCarriesAMachineCodeAndMessage() {
         final var result = new ToolResult(1, "", "Error response from daemon: No such container: svc", false);
         final StepError error = StepResultMapper.error(result);

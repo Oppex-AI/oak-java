@@ -43,6 +43,8 @@ final class StepResultMapper {
     @SuppressWarnings("unchecked")
     static Map<String, Object> output(final ToolResult result) {
         final Map<String, Object> output = new LinkedHashMap<>();
+        // Extra structured facts first (e.g. ssmCommandId, status for a host-executed step), verbatim.
+        output.putAll(result.data());
         final String stdout = result.stdout();
         if (stdout != null && !stdout.isBlank()) {
             final JsonNode node = tryJson(stdout);

@@ -68,18 +68,19 @@ public class SsmRunner {
             while (System.nanoTime() < deadline) {
                 final JsonNode inv = invocation(cmd, instanceId, region, awsEnv);
                 if (inv != null && TERMINAL.contains(inv.path("Status").asText(""))) {
-                    return toResult(inv);
+                    return toResult(cmd, inv);
                 }
                 Thread.sleep(POLL_MS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new ToolResult(-1, "", "interrupted while awaiting SSM command " + cmd, false);
+            return new ToolResult(-1, "", "interrupted while awaiting SSM command " + cmd, false, ids(cmd, "Interrupted"));
         }
-        return new ToolResult(-1, "", "SSM command " + cmd + " did not complete within " + MAX_WAIT_MS + "ms", true);
+        return new ToolResult(-1, "", "SSM command " + cmd + " did not complete within " + MAX_WAIT_MS + "ms", true,
+                ids(cmd, "TimedOut"));
     }
 
-    private static ToolResult toResult(final JsonNode inv) {
+    private static ToolResult toResult(final String cmd, final JsonNode inv) {
         final int exit = inv.hasNonNull("ResponseCode") ? inv.get("ResponseCode").asInt(-1) : -1;
         final String stdout = inv.path("StandardOutputContent").asText("");
         String stderr = inv.path("StandardErrorContent").asText("");
@@ -87,7 +88,12 @@ public class SsmRunner {
         if (!"Success".equals(status) && stderr.isBlank()) {
             stderr = "SSM invocation status: " + status;
         }
-        return new ToolResult(exit, stdout, stderr, false);
+        return new ToolResult(exit, stdout, stderr, false, ids(cmd, status));
+    }
+
+    /** The SSM correlation ids reported verbatim in the result's data (links OAK ↔ AWS Run Command history). */
+    private static Map<String, Object> ids(final String commandId, final String status) {
+        return Map.of("ssmCommandId", commandId, "status", status);
     }
 
     private JsonNode invocation(final String cmd, final String instanceId, final String region,
