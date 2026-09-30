@@ -68,7 +68,8 @@ class ProtocolMappingTest {
                 {"success":true,"code":200,"message":null,
                  "data":{"workflowId":42,"taskId":7,"capability":"AWS_EC2_START_INSTANCES",
                          "input":{"instanceIds":["i-1","i-2"],"region":"us-west-2"},
-                         "referenceType":"INCIDENT","referenceId":"INC-9","sequenceOrder":1}}""";
+                         "referenceType":"INCIDENT","referenceId":"INC-9","sequenceOrder":1,
+                         "executionId":"exec-77"}}""";
 
         final ApiResponse<RemoteStep> response = mapper.readValue(wire, new TypeReference<ApiResponse<RemoteStep>>() {
         });
@@ -80,6 +81,7 @@ class ProtocolMappingTest {
         assertEquals("AWS_EC2_START_INSTANCES", step.capability());
         assertEquals(List.of("i-1", "i-2"), step.input().get("instanceIds"));
         assertEquals("INC-9", step.referenceId());
+        assertEquals("exec-77", step.executionId());
     }
 
     @Test
@@ -106,10 +108,17 @@ class ProtocolMappingTest {
     }
 
     @Test
-    void resultRequestOmitsNullErrorMessage() throws Exception {
-        final var success = new RemoteStepResultRequest(1L, 2L, TaskStatus.SUCCESS, Map.of("exitCode", 0), null);
+    void resultEnvelopeEchoesExecutionIdAndOmitsErrorOnSuccess() throws Exception {
+        final var success = new RemoteStepResultRequest(1L, 2L, "exec-abc", true, Map.of("datapoints", List.of()), null);
         final String json = mapper.writeValueAsString(success);
-        assertTrue(json.contains("\"status\":\"SUCCESS\""));
-        assertFalse(json.contains("errorMessage"));
+        assertTrue(json.contains("\"executionId\":\"exec-abc\""));
+        assertTrue(json.contains("\"success\":true"));
+        assertFalse(json.contains("\"error\""), "error is omitted on success");
+
+        final var failure = new RemoteStepResultRequest(1L, 2L, "exec-abc", false, Map.of(),
+                new StepError("EXIT_NONZERO", "boom"));
+        final String failJson = mapper.writeValueAsString(failure);
+        assertTrue(failJson.contains("\"code\":\"EXIT_NONZERO\""));
+        assertTrue(failJson.contains("\"success\":false"));
     }
 }

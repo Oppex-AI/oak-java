@@ -24,7 +24,7 @@ import ai.oak.service.client.PairResponse;
 import ai.oak.service.client.PairStatus;
 import ai.oak.service.client.RemoteStep;
 import ai.oak.service.client.RemoteStepResultRequest;
-import ai.oak.service.client.TaskStatus;
+import ai.oak.service.client.StepError;
 import ai.oak.service.client.ToolServiceClient;
 import ai.oak.service.client.ToolServiceClient.UnauthorizedException;
 import ai.oak.service.client.ToolServiceRegistrationRequest;
@@ -32,7 +32,6 @@ import ai.oak.tools.ToolRegistry;
 import ai.oak.tools.ToolResult;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -365,7 +364,7 @@ public final class PlatformConnection {
         try {
             if (!ctx.active().test(step.capability())) {
                 final String note = "capability not active (missing configuration)";
-                client.reportResult(failed(step, note));
+                client.reportResult(fail(step, "INACTIVE", note));
                 return new Outcome("FAILED", note);
             }
             final Map<String, String> env = ctx.env() == null ? Map.of() : ctx.env().apply(step.capability());
@@ -383,9 +382,9 @@ public final class PlatformConnection {
             LOG.warn("[{}] step {}/{} reporting failed: {}", name, step.workflowId(), step.taskId(), e.getMessage());
             return new Outcome("FAILED", "could not report result: " + e.getMessage());
         } catch (RuntimeException e) {
-            LOG.warn("[{}] step {}/{} threw: {}", name, step.workflowId(), step.taskId(), e.getMessage());
-            final String note = "execution error: " + e.getMessage();
-            reportSafely(failed(step, note));
+            LOG.warn("[{}] step {}/{} threw: {}", name, step.workflowId(), step.taskId(), reason(e));
+            final String note = "execution error: " + reason(e);
+            reportSafely(fail(step, "EXECUTION_ERROR", note));
             return new Outcome("FAILED", note);
         }
     }
@@ -410,19 +409,19 @@ public final class PlatformConnection {
     private Outcome report(final RemoteStep step, final ToolResult result) throws IOException, InterruptedException {
         if (result == null) {
             final String note = "no tool registered for capability " + step.capability();
-            client.reportResult(failed(step, note));
+            client.reportResult(fail(step, "NO_TOOL", note));
             return new Outcome("FAILED", note);
         }
         final boolean ok = result.success();
-        final String note = ok ? null : (result.timedOut() ? "timed out" : "exit " + result.exitCode());
+        final StepError error = StepResultMapper.error(result);
         if (!ok) {
             LOG.warn("[{}] step {}/{} {} failed ({}); ran: {} | stderr: {}", name, step.workflowId(), step.taskId(),
-                    step.capability(), note, ctx.registry().render(step.capability(), step.input()).orElse("<no render>"),
+                    step.capability(), error.code(), ctx.registry().render(step.capability(), step.input()).orElse("<no render>"),
                     snippet(result.stderr()));
         }
-        client.reportResult(new RemoteStepResultRequest(step.workflowId(), step.taskId(),
-                ok ? TaskStatus.SUCCESS : TaskStatus.FAILED, outputOf(result), note));
-        return new Outcome(ok ? "SUCCESS" : "FAILED", note);
+        client.reportResult(new RemoteStepResultRequest(step.workflowId(), step.taskId(), step.executionId(), ok,
+                StepResultMapper.output(result), error));
+        return new Outcome(ok ? "SUCCESS" : "FAILED", ok ? null : error.message());
     }
 
     private void scheduleRetry(final long delayMs) {
@@ -452,8 +451,10 @@ public final class PlatformConnection {
         }
     }
 
-    private static RemoteStepResultRequest failed(final RemoteStep step, final String note) {
-        return new RemoteStepResultRequest(step.workflowId(), step.taskId(), TaskStatus.FAILED, Map.of(), note);
+    /** A failure envelope with no output — for cases that never ran a tool (inactive, no tool, threw). */
+    private static RemoteStepResultRequest fail(final RemoteStep step, final String code, final String message) {
+        return new RemoteStepResultRequest(step.workflowId(), step.taskId(), step.executionId(), false, Map.of(),
+                new StepError(code, message));
     }
 
     /** A one-line, length-bounded view of command output for a log line. */
@@ -463,17 +464,6 @@ public final class PlatformConnection {
         }
         final String flat = text.strip().replace('\n', ' ');
         return flat.length() > 300 ? flat.substring(0, 300) + "…" : flat;
-    }
-
-    private static Map<String, Object> outputOf(final ToolResult result) {
-        final Map<String, Object> output = new LinkedHashMap<>();
-        output.put("exitCode", result.exitCode());
-        output.put("stdout", result.stdout());
-        output.put("stderr", result.stderr());
-        if (result.timedOut()) {
-            output.put("timedOut", true);
-        }
-        return output;
     }
 
     private static String mask(final String id) {

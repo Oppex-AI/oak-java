@@ -16,9 +16,9 @@
 package ai.oak.service.client;
 
 /**
- * The outcome status this service reports for a step. The platform's own task lifecycle has more
- * states, but a tool service only ever produces these two — it ran the step or it did not.
+ * The error half of a failed step result: a short machine-readable {@code code} (e.g. {@code EXIT_NONZERO},
+ * {@code ACCESS_DENIED}, {@code TIMEOUT}) the platform can branch on, plus a human {@code message}. Present
+ * only when the step failed.
  */
-public enum TaskStatus {
-    SUCCESS, FAILED
+public record StepError(String code, String message) {
 }

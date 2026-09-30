@@ -19,9 +19,11 @@ import java.util.Map;
 
 /**
  * One unit of work handed to this service: run {@code capability} with {@code input}, then report the
- * result against {@code workflowId} + {@code taskId}. The incident reference is carried so a tool can
- * enrich its own logs; no other orchestration state crosses the boundary.
+ * result against {@code workflowId} + {@code taskId}, echoing {@code executionId} unchanged. The incident
+ * reference is carried so a tool can enrich its own logs; no other orchestration state crosses the
+ * boundary. {@code executionId} is the platform's opaque correlation token for this execution — never
+ * parsed or generated here, only carried back on the result.
  */
 public record RemoteStep(Long workflowId, Long taskId, String capability, Map<String, Object> input, String referenceType,
-        String referenceId, Integer sequenceOrder) {
+        String referenceId, Integer sequenceOrder, String executionId) {
 }
