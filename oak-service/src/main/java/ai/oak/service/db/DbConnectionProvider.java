@@ -55,17 +55,26 @@ public class DbConnectionProvider {
         final DbConnection conn = connections.get(dbIdentifier)
                 .orElseThrow(() -> new DbAccessException("NO_CONNECTION_CONFIGURED",
                         "no database connection configured for '" + dbIdentifier + "'"));
+        final boolean iam = !conn.usesPassword();
+        final boolean resolveHost = conn.host() == null || conn.host().isBlank();
         final String region = firstNonBlank(stepRegion, conn.region(), toolSettings.envFor("AWS").get("AWS_REGION"));
-        if (region == null) {
+        if (region == null && (iam || resolveHost)) {
             throw new DbAccessException("DB_UNREACHABLE", "no region for '" + dbIdentifier + "' (set it in the DB config)");
         }
-        final Map<String, String> awsEnv = awsEnv(region);
-        final String host = conn.host() != null && !conn.host().isBlank()
-                ? conn.host().trim()
-                : resolveEndpoint(dbIdentifier, region, awsEnv);
+        // AWS creds are only needed to resolve an RDS endpoint or to mint an IAM token.
+        final Map<String, String> awsEnv = iam || resolveHost ? awsEnv(region) : Map.of();
+        final String host = resolveHost ? resolveEndpoint(dbIdentifier, region, awsEnv) : conn.host().trim();
         final int port = conn.portOrDefault();
-        final String token = authToken(host, port, region, conn.username(), awsEnv);
-        return new JdbcDbGateway(connect(conn, host, port, token));
+        final String secret = iam ? authToken(host, port, region, conn.username(), awsEnv) : password(conn, dbIdentifier);
+        return new JdbcDbGateway(connect(conn, host, port, secret));
+    }
+
+    private static String password(final DbConnection conn, final String dbIdentifier) throws DbAccessException {
+        if (conn.password() == null || conn.password().isBlank()) {
+            throw new DbAccessException("DB_UNREACHABLE",
+                    "password auth selected but no password configured for '" + dbIdentifier + "'");
+        }
+        return conn.password();
     }
 
     private Connection connect(final DbConnection conn, final String host, final int port, final String token)

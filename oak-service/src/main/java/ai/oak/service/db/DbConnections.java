@@ -15,10 +15,13 @@
  */
 package ai.oak.service.db;
 
+import ai.oak.service.secret.SecretStore;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,7 +48,10 @@ public class DbConnections {
     @ConfigProperty(name = "oak.data-dir")
     Optional<String> dataDir;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    @Inject
+    SecretStore secrets;
+
+    private final ObjectMapper mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final Map<String, DbConnection> connections = new ConcurrentHashMap<>();
     private Path file;
 
@@ -89,7 +95,7 @@ public class DbConnections {
             final Map<String, DbConnection> loaded = mapper.readValue(Files.readAllBytes(file),
                     new TypeReference<LinkedHashMap<String, DbConnection>>() {
                     });
-            connections.putAll(loaded);
+            loaded.forEach((id, c) -> connections.put(id, c.withPassword(secrets.decrypt(c.password()))));
             LOG.info("Loaded {} database connection(s)", connections.size());
         } catch (IOException | RuntimeException e) {
             LOG.warn("Could not read {} ({}); starting with no DB connections", file, e.getMessage());
@@ -99,7 +105,10 @@ public class DbConnections {
     private void persist() {
         try {
             Files.createDirectories(file.getParent());
-            Files.write(file, mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(connections));
+            // Encrypt the password at rest (IAM-auth connections have none); everything else is non-secret.
+            final Map<String, DbConnection> encrypted = new LinkedHashMap<>();
+            connections.forEach((id, c) -> encrypted.put(id, c.withPassword(secrets.encrypt(c.password()))));
+            Files.write(file, mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(encrypted));
         } catch (IOException e) {
             LOG.error("Could not persist DB connections: {}", e.getMessage());
         }

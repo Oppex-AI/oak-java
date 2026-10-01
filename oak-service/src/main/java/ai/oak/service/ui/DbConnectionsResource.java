@@ -24,6 +24,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -40,8 +41,24 @@ public class DbConnectionsResource {
     @GET
     @Path("/db-connections")
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, DbConnection> list() {
-        return store.all();
+    public Map<String, Object> list() {
+        final Map<String, Object> out = new LinkedHashMap<>();
+        store.all().forEach((id, c) -> out.put(id, view(c)));
+        return out;
+    }
+
+    /** A connection as safe to return: no password, just whether one is set. */
+    private static Map<String, Object> view(final DbConnection c) {
+        final Map<String, Object> v = new LinkedHashMap<>();
+        v.put("username", c.username());
+        v.put("database", c.database());
+        v.put("host", c.host());
+        v.put("port", c.port());
+        v.put("sslmode", c.sslmode());
+        v.put("region", c.region());
+        v.put("authMode", c.authModeOrDefault());
+        v.put("passwordSet", c.password() != null && !c.password().isBlank());
+        return v;
     }
 
     @POST
@@ -52,8 +69,10 @@ public class DbConnectionsResource {
         if (req == null || blank(req.dbIdentifier()) || blank(req.username()) || blank(req.database())) {
             return Map.of("ok", false, "error", "dbIdentifier, username and database are required");
         }
-        store.update(req.dbIdentifier().trim(), new DbConnection(req.username().trim(), req.database().trim(),
-                trimOrNull(req.host()), req.port(), trimOrNull(req.sslmode()), trimOrNull(req.region())));
+        store.update(req.dbIdentifier().trim(),
+                new DbConnection(req.username().trim(), req.database().trim(), trimOrNull(req.host()), req.port(),
+                        trimOrNull(req.sslmode()), trimOrNull(req.region()), trimOrNull(req.authMode()),
+                        trimOrNull(req.password())));
         return Map.of("ok", true, "dbIdentifier", req.dbIdentifier().trim());
     }
 
@@ -77,9 +96,9 @@ public class DbConnectionsResource {
         return s == null || s.isBlank() ? null : s.trim();
     }
 
-    /** Upsert a dbIdentifier → connection. No password: auth is an RDS IAM token minted at connect time. */
+    /** Upsert a dbIdentifier → connection. authMode IAM (token, no secret) or PASSWORD (stored encrypted). */
     public record SaveRequest(String dbIdentifier, String username, String database, String host, Integer port, String sslmode,
-            String region) {
+            String region, String authMode, String password) {
     }
 
     public record DeleteRequest(String dbIdentifier) {
