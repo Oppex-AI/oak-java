@@ -164,6 +164,29 @@
           <i>Password</i> for databases without IAM auth (stored encrypted, never shown back). Leave <b>Host</b> blank to
           resolve the RDS endpoint automatically. The DB role needs <span class="mono">pg_monitor</span> +
           <span class="mono">pg_signal_backend</span> (+ <span class="mono">rds_iam</span> for IAM auth).</div>
+        <details class="card" style="margin-bottom:12px">
+          <summary style="cursor:pointer;font-weight:600">Database setup — Postgres grants + AWS console</summary>
+          <div style="margin-top:10px">
+            <div class="lbl">1. Postgres role (run as the RDS master, once per database)</div>
+            <div class="pre" style="white-space:pre">CREATE ROLE oak_runner LOGIN;
+GRANT pg_monitor TO oak_runner;        -- read other sessions' queries
+GRANT pg_signal_backend TO oak_runner; -- terminate a backend
+
+-- IAM auth (no password stored):
+GRANT rds_iam TO oak_runner;
+-- OR Password auth (no IAM DB auth needed):
+ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
+            <div class="lbl" style="margin-top:10px">2. AWS console (IAM auth only)</div>
+            <div class="sub" style="margin:2px 0 0">RDS → instance → Modify → <b>Database authentication</b> →
+              enable <i>IAM database authentication</i> → apply. Skip for Password auth.</div>
+            <div class="lbl" style="margin-top:10px">3. OAK's AWS role — add these actions</div>
+            <div class="pre" style="white-space:pre">"rds:DescribeDBInstances",   // resolve endpoint when Host is blank
+"rds-db:connect"             // IAM auth only</div>
+            <div class="sub" style="margin:2px 0 0">The full role policy is under <b>AWS → Role permissions policy</b>
+              above. Apply role changes in your AWS account yourself.</div>
+            <div class="sub" style="margin:8px 0 0">Full runbook: <span class="mono">docs/db-runbook-setup.md</span> in the repo.</div>
+          </div>
+        </details>
         <div class="card">
           <div id="dbconns"><div class="empty">Loading…</div></div>
           <div class="kv" style="margin-top:12px">
