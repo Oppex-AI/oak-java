@@ -61,6 +61,9 @@ public class HostContainerScanner {
     private static final Set<String> TERMINAL = Set.of("Success", "Failed", "Cancelled", "TimedOut", "Undeliverable",
             "Terminated", "Delivery Timed Out");
 
+    /** Last scan status per host, so an unreachable host is warned about once, not every discovery cycle. */
+    private final Map<String, String> lastStatus = new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * The services on {@code instanceId}: its Docker containers and, when {@code includeProcesses} is set,
      * its host processes too (from {@code ps -ef}) — so apps running directly on the host are captured
@@ -75,9 +78,11 @@ public class HostContainerScanner {
             }
             final String status = pollStatus(commandId, instanceId, region, env);
             if (!"Success".equals(status)) {
-                LOG.warn("discovery: host scan on {} did not succeed ({}) — skipping it", instanceId, status);
+                warnOnce(instanceId, status, "not reachable via SSM (status " + status +
+                        ") — can't scan containers/processes; the host needs the SSM agent + an instance profile");
                 return List.of();
             }
+            lastStatus.put(instanceId, "Success");
             return parseScan(invocationOutput(commandId, instanceId, region, env), instanceId, region, includeProcesses);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -113,14 +118,25 @@ public class HostContainerScanner {
         final ToolResult r = CommandRunner.run(argv, env);
         if (!r.success()) {
             final String err = r.stderr().isBlank() ? r.stdout() : r.stderr().strip();
-            final String hint = err.contains("AccessDenied") || err.contains("not authorized")
-                    ? "the assumed role is missing ssm:SendCommand — add it to the linked role's policy"
-                    : "host not SSM-managed (no SSM agent / instance profile)?";
-            LOG.warn("discovery: could not scan {} via SSM — {}: {}", instanceId, hint, err);
+            final boolean denied = err.contains("AccessDenied") || err.contains("not authorized");
+            warnOnce(instanceId, denied ? "ACCESS_DENIED" : "SEND_FAILED",
+                    (denied
+                            ? "the assumed role is missing ssm:SendCommand — add it to the linked role's policy"
+                            : "could not send the SSM scan (not SSM-managed?)") + ": " + err);
             return null;
         }
         final String id = r.stdout().trim();
         return id.isEmpty() ? null : id;
+    }
+
+    /** Warn about a host that can't be scanned only when its status changes — repeats drop to DEBUG. */
+    private void warnOnce(final String instanceId, final String statusKey, final String message) {
+        final String previous = lastStatus.put(instanceId, statusKey);
+        if (!statusKey.equals(previous)) {
+            LOG.warn("discovery: host {} {}", instanceId, message);
+        } else {
+            LOG.debug("discovery: host {} {}", instanceId, message);
+        }
     }
 
     private String pollStatus(final String cmd, final String instanceId, final String region, final Map<String, String> env)
