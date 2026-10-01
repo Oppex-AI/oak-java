@@ -35,6 +35,9 @@ final class StepResultMapper {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_MESSAGE = 500;
+    /** data keys a structured tool uses to signal its own failure code/message; not part of the output. */
+    private static final String ERROR_CODE = "errorCode";
+    private static final String ERROR_MESSAGE = "errorMessage";
 
     private StepResultMapper() {
     }
@@ -43,8 +46,13 @@ final class StepResultMapper {
     @SuppressWarnings("unchecked")
     static Map<String, Object> output(final ToolResult result) {
         final Map<String, Object> output = new LinkedHashMap<>();
-        // Extra structured facts first (e.g. ssmCommandId, status for a host-executed step), verbatim.
-        output.putAll(result.data());
+        // Extra structured facts first (e.g. ssmCommandId, status for a host-executed step), verbatim —
+        // except the reserved error-signalling keys, which belong in the envelope's error, not output.
+        result.data().forEach((k, v) -> {
+            if (!ERROR_CODE.equals(k) && !ERROR_MESSAGE.equals(k)) {
+                output.put(k, v);
+            }
+        });
         final String stdout = result.stdout();
         if (stdout != null && !stdout.isBlank()) {
             final JsonNode node = tryJson(stdout);
@@ -68,6 +76,10 @@ final class StepResultMapper {
     }
 
     private static String code(final ToolResult result) {
+        final Object explicit = result.data().get(ERROR_CODE);
+        if (explicit != null) {
+            return explicit.toString(); // a tool that knows its own failure class (DB_UNREACHABLE, ...)
+        }
         if (result.timedOut()) {
             return "TIMEOUT";
         }
@@ -82,9 +94,12 @@ final class StepResultMapper {
     }
 
     private static String message(final ToolResult result) {
-        String text = notBlank(result.stderr())
-                ? result.stderr()
-                : notBlank(result.stdout()) ? result.stdout() : "exit " + result.exitCode();
+        final Object explicit = result.data().get(ERROR_MESSAGE);
+        String text = explicit != null
+                ? explicit.toString()
+                : notBlank(result.stderr())
+                        ? result.stderr()
+                        : notBlank(result.stdout()) ? result.stdout() : "exit " + result.exitCode();
         text = text.strip().replace('\n', ' ');
         return text.length() > MAX_MESSAGE ? text.substring(0, MAX_MESSAGE) + "…" : text;
     }

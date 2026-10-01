@@ -15,6 +15,8 @@
  */
 package ai.oak.tools;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -40,7 +42,9 @@ import java.util.Map;
 public record ToolResult(int exitCode, String stdout, String stderr, boolean timedOut, Map<String, Object> data) {
 
     public ToolResult {
-        data = data == null ? Map.of() : Map.copyOf(data);
+        // A defensive, unmodifiable copy that tolerates null values (unlike Map.copyOf) — some facts, e.g.
+        // an observed backend_start that is absent, are legitimately null.
+        data = data == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(data));
     }
 
     /** An ordinary command result with no extra structured data. */

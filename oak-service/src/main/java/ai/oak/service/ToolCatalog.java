@@ -52,6 +52,9 @@ public class ToolCatalog {
     @Inject
     SsmRunner ssmRunner;
 
+    @Inject
+    ai.oak.service.db.DbConnectionProvider dbConnectionProvider;
+
     /** Any customer-supplied {@link Tool} CDI beans, registered after the built-ins so theirs win. */
     @Inject
     Instance<Tool> customTools;
@@ -77,6 +80,7 @@ public class ToolCatalog {
             DockerTools.registerAll(built);
             registerHostAwareDocker(built);
         }
+        registerDbTools(built);
         int custom = 0;
         for (final Tool tool : customTools) {
             built.register(tool);
@@ -102,8 +106,15 @@ public class ToolCatalog {
                 new HostAwareDockerTool("DOCKER_STOP", "stop", ToolPermission.WRITE, "Stop a container.", false, ssmRunner, env));
         built.register(new HostAwareDockerTool("DOCKER_INSPECT", "inspect", ToolPermission.READ,
                 "Show low-level info for a container.", false, ssmRunner, env));
-        built.register(new HostAwareDockerTool("DOCKER_LOGS", "logs", ToolPermission.READ, "Show a container's logs.", true,
-                ssmRunner, env));
+        // DOCKER_LOGS returns structured output (lineCount/truncated/logs), so it has a dedicated tool.
+        built.register(new DockerLogsTool(ssmRunner, env));
+    }
+
+    /** The database tools (DB_LIST_ACTIVITY read, DB_TERMINATE destructive). Always available; they report
+     *  NO_CONNECTION_CONFIGURED at runtime when a dbIdentifier has no local connection configured. */
+    private void registerDbTools(final ToolRegistry built) {
+        built.register(new ai.oak.service.db.DbListActivityTool(dbConnectionProvider));
+        built.register(new ai.oak.service.db.DbTerminateTool(dbConnectionProvider));
     }
 
     /** Assumed-role AWS environment for the SSM calls a host-aware docker tool makes. */

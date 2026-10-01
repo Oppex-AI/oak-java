@@ -70,6 +70,15 @@
       <artifactId>jackson-datatype-jsr310</artifactId>
     </dependency>
 
+    <!-- The DB tools (DB_LIST_ACTIVITY / DB_TERMINATE) open a plain JDBC connection to Postgres
+         (RDS/Aurora included). SQL-level only — no RDS control-plane calls. Kept in oak-service so the
+         oak-tools core stays framework-free and dependency-free. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>42.7.4</version>
+    </dependency>
+
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

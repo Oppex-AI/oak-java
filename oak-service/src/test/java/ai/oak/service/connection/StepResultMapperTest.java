@@ -52,6 +52,15 @@ class StepResultMapperTest {
     }
 
     @Test
+    void reservedErrorKeysDriveTheErrorAndAreKeptOutOfOutput() {
+        final var result = new ToolResult(1, "", "", false, Map.of("errorCode", "DB_UNREACHABLE", "errorMessage", "boom"));
+        final StepError error = StepResultMapper.error(result);
+        assertEquals("DB_UNREACHABLE", error.code());
+        assertEquals("boom", error.message());
+        assertTrue(StepResultMapper.output(result).isEmpty(), "errorCode/errorMessage are not output facts");
+    }
+
+    @Test
     void ssmDataIsCarriedIntoOutput() {
         final var result = new ToolResult(0, "opx-client-service", "", false,
                 Map.of("ssmCommandId", "abc-123", "status", "Success"));
