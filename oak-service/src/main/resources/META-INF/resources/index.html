@@ -156,6 +156,25 @@
           (run <span class="mono">aws sso login</span> for it); or provide explicit keys. Secrets are stored
           encrypted and never shown back.</div>
         <div id="toolsettings"></div>
+
+        <h2 class="section">Databases</h2>
+        <div class="sub" style="margin:-8px 0 12px">Map each logical <span class="mono">dbIdentifier</span> the platform
+          sends to a Postgres role + database. No password is stored — OAK authenticates with a short-lived RDS IAM
+          token at connect time. Leave <b>Host</b> blank to resolve the RDS endpoint automatically from the
+          dbIdentifier. The role needs <span class="mono">rds_iam</span>, <span class="mono">pg_monitor</span> and
+          <span class="mono">pg_signal_backend</span>.</div>
+        <div class="card">
+          <div id="dbconns"><div class="empty">Loading…</div></div>
+          <div class="kv" style="margin-top:12px">
+            <label>dbIdentifier</label><input id="db_id" placeholder="orders-db (RDS instance id or logical name)">
+            <label>DB username</label><input id="db_user" placeholder="oak_runner">
+            <label>Database</label><input id="db_name" placeholder="appdb">
+            <label>Host (optional)</label><input id="db_host" class="mono" placeholder="blank = resolve RDS endpoint">
+            <label>Port (optional)</label><input id="db_port" placeholder="5432">
+            <label>Region (optional)</label><input id="db_region" placeholder="us-west-2">
+            <span></span><span><button class="btn" id="dbSaveBtn">Save database</button> <span id="dbMsg" class="sub"></span></span>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -412,6 +431,42 @@
           "AWS tools": d.awsEnabled ? "enabled" : "disabled", "Docker tools": d.dockerEnabled ? "enabled" : "disabled" });
       } catch (e) { $("setinfo").innerHTML = '<dd class="empty">Could not load: ' + esc(e.message) + "</dd>"; }
       loadToolSettings();
+      loadDbConnections();
+    }
+
+    // ---- database connections ----
+    async function loadDbConnections() {
+      try {
+        const conns = await (await fetch("api/db-connections", { cache: "no-store" })).json();
+        const ids = Object.keys(conns).sort();
+        $("dbconns").innerHTML = ids.length ? `<table><thead><tr>
+          <th>dbIdentifier</th><th>Username</th><th>Database</th><th>Host</th><th>Port</th><th>Region</th><th></th></tr></thead>
+          <tbody>${ids.map(id => dbRow(id, conns[id])).join("")}</tbody></table>`
+          : '<div class="empty">No databases configured. Add one below.</div>';
+      } catch (e) { $("dbconns").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    function dbRow(id, c) {
+      return `<tr><td class="mono">${esc(id)}</td><td>${esc(c.username)}</td><td>${esc(c.database)}</td>
+        <td class="mono">${esc(c.host || "— (RDS)")}</td><td>${esc(c.port ?? "5432")}</td><td>${esc(c.region ?? "—")}</td>
+        <td><button class="btn ghost" onclick="deleteDb('${esc(id)}')">Remove</button></td></tr>`;
+    }
+    async function deleteDb(id) {
+      await fetch("api/db-connections/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dbIdentifier: id }) });
+      loadDbConnections();
+    }
+    async function saveDb() {
+      const body = { dbIdentifier: $("db_id").value.trim(), username: $("db_user").value.trim(),
+        database: $("db_name").value.trim(), host: $("db_host").value.trim() || null,
+        port: $("db_port").value.trim() ? parseInt($("db_port").value.trim(), 10) : null,
+        region: $("db_region").value.trim() || null };
+      try {
+        const d = await (await fetch("api/db-connections", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+        if (!d.ok) { $("dbMsg").textContent = d.error || "failed"; return; }
+        ["db_id", "db_user", "db_name", "db_host", "db_port", "db_region"].forEach(i => $(i).value = "");
+        $("dbMsg").textContent = "Saved."; loadDbConnections();
+      } catch (e) { $("dbMsg").textContent = "Save failed: " + e.message; }
     }
 
     // Editable fields per group; the store itself is generic. AWS also shows a read-only External ID.
@@ -561,6 +616,7 @@
     // Re-run the loader for whichever view is showing.
     function refreshActive() { show(views.find(v => $(v).classList.contains("active")) || "dashboard"); }
     $("refreshBtn").onclick = refreshActive;
+    $("dbSaveBtn").onclick = saveDb;
     show(location.hash.slice(1) || "dashboard");
     // Gentle auto-refresh of the Dashboard every 5 minutes; use the Refresh button for an immediate update.
     setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 300000);
