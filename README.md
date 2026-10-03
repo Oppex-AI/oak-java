@@ -194,6 +194,24 @@ Published to GitHub Packages as **`ai.oppex:oak-tools`**. Consumers add the repo
 
 For local development no publish is needed — `mvn install` puts it in `~/.m2`.
 
+## Contributing
+
+Contributions go through fork → branch → PR; you don't need write access. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) for the build, testing expectations, and how to add a tool.
+How the project is run and reviewed — roles, code ownership, and the tool-contract rules — is in
+[GOVERNANCE.md](GOVERNANCE.md). Notable changes are tracked in [CHANGELOG.md](CHANGELOG.md), and
+the release policy in [RELEASING.md](RELEASING.md).
+
+OAK is the execution layer for a planner (first: Oppex). Changes to a tool's input, output, or
+permission, or to the `/v1/tools` protocol, are a cross-repository contract change — see
+[GOVERNANCE.md](GOVERNANCE.md).
+
+## Security
+
+OAK runs operations against real infrastructure, so security reports get priority. **Don't open
+a public issue for anything exploitable** — see [SECURITY.md](SECURITY.md) for how to report
+privately and what the security-sensitive areas are.
+
 ## Licence
 
 Apache 2.0. See [LICENSE](LICENSE).
