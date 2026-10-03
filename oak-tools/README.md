@@ -48,3 +48,10 @@ ToolResult result = registry.execute("AWS_EC2_START_INSTANCES",
 ```
 
 Keep this module framework-free (JDK only) — it is what lets it be public and drop onto any JVM.
+
+## Contributing & licence
+
+Part of [oak-java](../README.md). How to contribute: [CONTRIBUTING](../CONTRIBUTING.md); how the
+project is run: [GOVERNANCE](../GOVERNANCE.md). Report vulnerabilities privately per
+[SECURITY](../SECURITY.md) — do not open a public issue. Licensed under Apache 2.0
+([LICENSE](../LICENSE)).

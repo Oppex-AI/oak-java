@@ -38,3 +38,10 @@ the same as JSON. Use `OAK_UI_HOST=127.0.0.1` / `OAK_UI_PORT` to bind it down on
 Annotate a `Tool` implementation `@ApplicationScoped` and it is registered automatically after the
 built-ins (so reusing a built-in capability id overrides it). See
 [Add your own tool](../README.md#add-your-own-tool).
+
+## Contributing & licence
+
+Part of [oak-java](../README.md). How to contribute: [CONTRIBUTING](../CONTRIBUTING.md); how the
+project is run: [GOVERNANCE](../GOVERNANCE.md). Report vulnerabilities privately per
+[SECURITY](../SECURITY.md) — do not open a public issue. Licensed under Apache 2.0
+([LICENSE](../LICENSE)).
