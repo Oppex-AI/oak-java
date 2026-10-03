@@ -1,0 +1,60 @@
+# CODEOWNERS — who must review what.
+#
+# GitHub requests a review from the owner of every path a PR touches, and (once the
+# "require review from Code Owners" branch rule is on) blocks merge until they approve.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️ PLACEHOLDER TEAMS — these teams DO NOT EXIST YET.
+#
+# GitHub SILENTLY IGNORES an owner that is not a team/user with write access to the
+# repo, so until the three teams below are created in the Oppex-AI org and given
+# write access, these rules enforce NOTHING. See GOVERNANCE.md § Teams and roles.
+#
+#   @Oppex-AI/oak-maintainers  merge + repo maintenance
+#   @Oppex-AI/oak-reviewers    general code review
+#   @Oppex-AI/oak-security     security-sensitive execution / auth / permission review
+#
+# Interim, until those teams exist: replace them with an existing team that has write
+# access (e.g. @Oppex-AI/oppex-engineering) or with named maintainers, so review is
+# actually required.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Default owner for everything not matched more specifically below.
+*                                       @Oppex-AI/oak-maintainers
+
+# Governance, CI and this file itself — maintainers only.
+# (Listing CODEOWNERS here is what protects CODEOWNERS from being edited unreviewed.)
+/.github/                               @Oppex-AI/oak-maintainers
+/.github/CODEOWNERS                     @Oppex-AI/oak-maintainers
+/CONTRIBUTING.md                        @Oppex-AI/oak-maintainers
+/GOVERNANCE.md                          @Oppex-AI/oak-maintainers
+/RELEASING.md                           @Oppex-AI/oak-maintainers
+
+# ── Security-sensitive: adds oak-security on top of normal review ─────────────
+# The tool contract and permission model. A permission reclassification
+# (READ→WRITE, WRITE→DESTRUCTIVE) is a security review item — see GOVERNANCE.md.
+/oak-tools/src/main/java/ai/oak/tools/Tool.java            @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-tools/src/main/java/ai/oak/tools/ToolPermission.java  @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-tools/src/main/java/ai/oak/tools/ToolRegistry.java    @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-tools/src/main/java/ai/oak/tools/ToolResult.java      @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-tools/src/main/java/ai/oak/tools/CommandTool.java     @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# Command execution plumbing (argv building, process execution).
+/oak-tools/src/main/java/ai/oak/tools/cli/                 @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# AWS execution (incl. SSM in-instance Run Command) and Docker execution.
+/oak-tools/src/main/java/ai/oak/tools/aws/                 @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-tools/src/main/java/ai/oak/tools/docker/              @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# Database / destructive execution (DB_LIST_ACTIVITY, DB_TERMINATE).
+/oak-service/src/main/java/ai/oak/service/db/              @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# Transport + the restated /v1/tools wire contract, and pairing.
+/oak-service/src/main/java/ai/oak/service/client/          @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+/oak-service/src/main/java/ai/oak/service/connection/      @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# Credential handling (encrypted API-key store).
+/oak-service/src/main/java/ai/oak/service/secret/          @Oppex-AI/oak-maintainers @Oppex-AI/oak-security
+
+# Security policy itself.
+/SECURITY.md                            @Oppex-AI/oak-maintainers @Oppex-AI/oak-security

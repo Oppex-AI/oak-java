@@ -1,0 +1,31 @@
+# Weekly, not daily — enough to stay current without a flood of PRs.
+# Maven is a single ecosystem across the reactor (dependabot reads the root pom and
+# discovers the modules), plus the GitHub Actions used by CI.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    # Majors tend to need human judgement; let security updates still come through.
+    groups:
+      maven-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-all:
+        patterns: ["*"]

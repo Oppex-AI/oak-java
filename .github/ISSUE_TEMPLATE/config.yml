@@ -1,0 +1,9 @@
+# Keep the blank-issue option off so bugs/features/tools use a template,
+# and route security reports to the private process instead of a public issue.
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability (private)
+    url: https://github.com/Oppex-AI/oak-java/security/policy
+    about: >-
+      Do NOT open a public issue for anything exploitable — credential exposure,
+      unintended execution, permission bypass, or transport flaws. Follow SECURITY.md.
