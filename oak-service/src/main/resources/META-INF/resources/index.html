@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAK service</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --border: #e3e6ea; --text: #1c2024;
+      --muted: #6b7280; --accent: #2f6feb; --chip: #eef1f5; --sidebar: #0f1720; --sidebar-text: #cdd5df;
+      --ok: #1a7f37; --ok-bg: #e6f4ea; --warn: #9a6700; --warn-bg: #fff5db;
+      --idle: #6b7280; --idle-bg: #eceef1; --err: #b42318; --err-bg: #fdecea;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a; --panel: #1c1f24; --border: #2b2f36; --text: #e6e8eb;
+        --muted: #9aa3ad; --accent: #6ea8fe; --chip: #262a31; --sidebar: #0c0e12; --sidebar-text: #aab2bd;
+        --ok: #4ac26b; --ok-bg: #123321; --warn: #e3b341; --warn-bg: #33280a;
+        --idle: #9aa3ad; --idle-bg: #262a31; --err: #ff7b72; --err-bg: #3a1a17;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; background: var(--sidebar); color: var(--sidebar-text); padding: 20px 12px; flex-shrink: 0; }
+    .brand { font-size: 20px; font-weight: 700; color: #fff; padding: 4px 10px 2px; }
+    .brand small { display: block; font-size: 12px; font-weight: 400; color: var(--sidebar-text); }
+    .nav { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; }
+    .nav button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none;
+      border: 0; color: var(--sidebar-text); padding: 9px 11px; border-radius: 7px; font-size: 14px; cursor: pointer; }
+    .nav button:hover { background: rgba(255,255,255,.06); color: #fff; }
+    .nav button.on { background: var(--accent); color: #fff; }
+    .main { flex: 1; min-width: 0; padding: 24px 28px 64px; max-width: 980px; }
+    h1 { font-size: 20px; margin: 0 0 2px; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+    section { display: none; } section.active { display: block; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+    .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .b-ok { color: var(--ok); background: var(--ok-bg); } .b-warn { color: var(--warn); background: var(--warn-bg); }
+    .b-idle { color: var(--idle); background: var(--idle-bg); } .b-err { color: var(--err); background: var(--err-bg); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 20px; }
+    .card.pl { margin-bottom: 0; }
+    .card h2, h2.section { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+    .plhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .plhead .nm { font-weight: 650; }
+    .kv { display: grid; grid-template-columns: minmax(100px, auto) 1fr; gap: 6px 14px; font-size: 14px; align-items: center; }
+    .kv dt { color: var(--muted); } .kv dd { margin: 0; word-break: break-word; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .yes { color: var(--ok); font-weight: 600; } .no { color: var(--muted); }
+    .banner { background: var(--err-bg); color: var(--err); border-radius: 8px; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
+    input, select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; }
+    button.btn { padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+    button.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    button.btn.ghost:hover { color: var(--text); background: var(--chip); }
+    .topbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: none; }
+    .st { font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+    .st-SUCCESS, .perm-READ { color: var(--ok); background: var(--ok-bg); }
+    .st-FAILED, .perm-DESTRUCTIVE { color: var(--err); background: var(--err-bg); }
+    .perm-WRITE { color: var(--warn); background: var(--warn-bg); }
+    .empty { color: var(--muted); padding: 20px; text-align: center; font-size: 14px; }
+    .foot { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    /* accordion */
+    .acc { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: var(--panel); overflow: hidden; }
+    .acc-h { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0;
+      color: var(--text); padding: 13px 16px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
+    .acc-h:hover { background: var(--chip); }
+    .acc-h .cnt { color: var(--muted); font-weight: 400; font-size: 13px; }
+    .acc-h .caret { transition: transform .15s; color: var(--muted); }
+    .acc.open > .acc-h .caret { transform: rotate(90deg); }
+    .acc-b { display: none; padding: 4px 12px 12px; } .acc.open > .acc-b { display: block; }
+    .svc .acc-h { font-size: 14px; padding: 10px 14px; }
+    .tool { border-top: 1px solid var(--border); padding: 12px 4px; }
+    .tool:first-child { border-top: 0; }
+    .tool .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .tool .cap { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+    .tool .desc { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+    .pre { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; overflow-x: auto; }
+    .lbl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 8px 0 4px; }
+    .runform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .runform .ri { width: auto; flex: 1 1 160px; min-width: 120px; font-size: 12px; }
+    .runform button.run { flex: 0 0 auto; padding: 7px 14px; }
+    .runout:not(:empty) { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">OAK<small>Oppex Agentic Kit</small></div>
+      <nav class="nav">
+        <button data-view="dashboard">▪ Dashboard</button>
+        <button data-view="tools">▪ Tools</button>
+        <button data-view="settings">▪ Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="topbar"><button class="btn ghost" id="refreshBtn" title="Refresh this page">⟳ Refresh</button></div>
+      <section id="dashboard">
+        <h1>Dashboard</h1>
+        <div class="sub" id="dash-sub">Loading…</div>
+        <h2 class="section">Platforms</h2>
+        <div class="grid" id="platforms"></div>
+        <div class="card">
+          <h2>This service</h2>
+          <dl class="kv" id="svcinfo"></dl>
+        </div>
+        <h2 class="section">Recent steps</h2>
+        <table>
+          <thead><tr><th>Time</th><th>Platform</th><th>Workflow / Task</th><th>Capability</th><th>Status</th><th>Note</th></tr></thead>
+          <tbody id="recent"><tr><td colspan="6" class="empty">No steps yet.</td></tr></tbody>
+        </table>
+        <h2 class="section">Last discovery posted</h2>
+        <div id="discovery"><div class="empty">Nothing reported yet.</div></div>
+        <div class="foot" id="dash-foot"></div>
+      </section>
+
+      <section id="tools">
+        <h1>Tools</h1>
+        <div class="sub">The capabilities this service can run, grouped by provider. Configuring per-tool
+          credentials is coming later — for now each tool shows the command it would run.</div>
+        <div id="toolgroups"><div class="empty">Loading…</div></div>
+      </section>
+
+      <section id="settings">
+        <h1>Settings</h1>
+        <div class="sub">Connect this service to a platform. Secrets are stored encrypted and never shown back.</div>
+        <div class="card">
+          <h2>Connect a platform</h2>
+          <div class="kv">
+            <label for="inName">Platform</label><input id="inName" placeholder="oppex">
+            <label for="inBaseUrl">Base URL</label><input id="inBaseUrl" class="mono" placeholder="http://localhost:8975">
+            <label for="inClientId">Client ID</label><input id="inClientId" class="mono" placeholder="oak_0cd990… — from the platform's OAK page">
+            <label for="inPairingSecret">Pairing secret</label><input id="inPairingSecret" type="password" placeholder="the secret issued with the client id">
+            <span></span><span><button class="btn" id="saveBtn">Save &amp; connect</button></span>
+          </div>
+          <div id="saveMsg" class="sub" style="margin:12px 0 0"></div>
+        </div>
+        <div class="card">
+          <h2>Service settings</h2>
+          <dl class="kv" id="setinfo"></dl>
+          <div class="sub" style="margin-top:10px">These are read from configuration today; editing more of them
+            from here comes later.</div>
+        </div>
+
+        <h2 class="section">Tool execution settings</h2>
+        <div class="sub" style="margin:-8px 0 12px">How tools reach your cloud when a step runs. For AWS, the
+          simplest path is a profile whose role/SSO is set up in this host's <span class="mono">~/.aws/config</span>
+          (run <span class="mono">aws sso login</span> for it); or provide explicit keys. Secrets are stored
+          encrypted and never shown back.</div>
+        <div id="toolsettings"></div>
+
+        <h2 class="section">Databases</h2>
+        <div class="sub" style="margin:-8px 0 12px">Map each logical <span class="mono">dbIdentifier</span> the platform
+          sends to a Postgres role + database. <b>Auth</b>: <i>IAM</i> mints a short-lived RDS token at connect time
+          (no password stored; needs IAM DB auth on the instance + the <span class="mono">rds_iam</span> grant), or
+          <i>Password</i> for databases without IAM auth (stored encrypted, never shown back). Leave <b>Host</b> blank to
+          resolve the RDS endpoint automatically. The DB role needs <span class="mono">pg_monitor</span> +
+          <span class="mono">pg_signal_backend</span> (+ <span class="mono">rds_iam</span> for IAM auth).</div>
+        <details class="card" style="margin-bottom:12px">
+          <summary style="cursor:pointer;font-weight:600">Database setup — Postgres grants + AWS console</summary>
+          <div style="margin-top:10px">
+            <div class="lbl">1. Postgres role (run as the RDS master, once per database)</div>
+            <div class="pre" style="white-space:pre">CREATE ROLE oak_runner LOGIN;
+GRANT pg_monitor TO oak_runner;        -- read other sessions' queries
+GRANT pg_signal_backend TO oak_runner; -- terminate a backend
+
+-- IAM auth (no password stored):
+GRANT rds_iam TO oak_runner;
+-- OR Password auth (no IAM DB auth needed):
+ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
+            <div class="lbl" style="margin-top:10px">2. AWS console (IAM auth only)</div>
+            <div class="sub" style="margin:2px 0 0">RDS → instance → Modify → <b>Database authentication</b> →
+              enable <i>IAM database authentication</i> → apply. Skip for Password auth.</div>
+            <div class="lbl" style="margin-top:10px">3. OAK's AWS role — add these actions</div>
+            <div class="pre" style="white-space:pre">"rds:DescribeDBInstances",   // resolve endpoint when Host is blank
+"rds-db:connect"             // IAM auth only</div>
+            <div class="sub" style="margin:2px 0 0">The full role policy is under <b>AWS → Role permissions policy</b>
+              above. Apply role changes in your AWS account yourself.</div>
+            <div class="sub" style="margin:8px 0 0">Full runbook: <span class="mono">docs/db-runbook-setup.md</span> in the repo.</div>
+          </div>
+        </details>
+        <div class="card">
+          <div id="dbconns"><div class="empty">Loading…</div></div>
+          <div class="kv" style="margin-top:12px">
+            <label>dbIdentifier</label><input id="db_id" placeholder="orders-db (RDS instance id or logical name)">
+            <label>DB username</label><input id="db_user" placeholder="oak_runner">
+            <label>Database</label><input id="db_name" placeholder="appdb">
+            <label>Auth</label><select id="db_auth"><option value="IAM">RDS IAM token (no password)</option><option value="PASSWORD">Password</option></select>
+            <label>Password</label><input id="db_pass" type="password" placeholder="only for Password auth; stored encrypted">
+            <label>Host (optional)</label><input id="db_host" class="mono" placeholder="blank = resolve RDS endpoint">
+            <label>Port (optional)</label><input id="db_port" placeholder="5432">
+            <label>Region (optional)</label><input id="db_region" placeholder="us-west-2">
+            <span></span><span><button class="btn" id="dbSaveBtn">Save database</button> <span id="dbMsg" class="sub"></span></span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const fmt = (iso) => { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? esc(iso) : d.toLocaleString(); };
+    // [cssClass, label, tooltip] per lifecycle phase.
+    const PHASE = {
+      CONNECTED: ["b-ok", "connected", "Registered and polling the platform for steps."],
+      PENDING_APPROVAL: ["b-warn", "waiting for approval", "Paired — waiting for an admin to approve this client on the platform."],
+      PAIRING: ["b-warn", "pairing", "Pairing handshake in progress."],
+      DISCONNECTED: ["b-err", "disconnected", "Was connected; the platform revoked the token — re-pairing is needed."],
+      ERROR: ["b-err", "error", "A transient error (network, platform down); will retry."],
+      IDLE: ["b-idle", "not connected", "Not connected — needs setup. See the reason on the card."]
+    };
+
+    // ---- routing ----
+    const views = ["dashboard", "tools", "settings"];
+    function show(view) {
+      if (!views.includes(view)) view = "dashboard";
+      views.forEach(v => $(v).classList.toggle("active", v === view));
+      document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.view === view));
+      if (view === "dashboard") loadDashboard();
+      if (view === "tools") loadTools();
+      if (view === "settings") loadSettings();
+    }
+    document.querySelectorAll(".nav button").forEach(b => b.onclick = () => { location.hash = b.dataset.view; });
+    window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+
+    // ---- dashboard ----
+    function platformCard(p) {
+      const [cls, label, tip] = PHASE[p.phase] || ["b-idle", (p.phase || "").toLowerCase(), ""];
+      return `<div class="card pl">
+        <div class="plhead"><span class="nm">${esc(p.name)}</span><span class="badge ${cls}" title="${esc(tip || "")}">${esc(label)}</span></div>
+        <dl class="kv">
+          <dt>Base URL</dt><dd class="mono">${esc(p.baseUrl || "not set")}</dd>
+          <dt>Client ID</dt><dd class="mono">${esc(p.clientIdMasked || "—")}</dd>
+          <dt>Token</dt><dd>${p.tokenPresent ? '<span class="yes">present</span>' : '<span class="no">none</span>'}</dd>
+          ${p.connectionId ? `<dt>Connection</dt><dd class="mono">${esc(p.connectionId)}</dd>` : ""}
+          <dt>Since</dt><dd>${fmt(p.since)}</dd>
+        </dl>
+        ${p.detail ? `<div class="sub" style="margin:10px 0 0">${esc(p.detail)}</div>` : ""}
+        ${p.lastError ? `<div class="banner">⚠ ${esc(p.lastError)}</div>` : ""}
+      </div>`;
+    }
+    async function loadDashboard() {
+      try {
+        const d = await (await fetch("api/status", { cache: "no-store" })).json();
+        const pl = d.platforms || [];
+        const connected = pl.filter(p => p.phase === "CONNECTED").length;
+        $("dash-sub").textContent = pl.length
+          ? `${connected} of ${pl.length} platform(s) connected · ${(d.advertised || []).length} tools advertised`
+          : "No platforms configured — add one under Settings.";
+        $("platforms").innerHTML = pl.length ? pl.map(platformCard).join("") : '<div class="card pl"><span class="empty">none configured</span></div>';
+        $("svcinfo").innerHTML = kv({ Name: d.serviceName, Version: d.serviceVersion, "Poll every": d.pollInterval,
+          Workers: d.workerThreads, "Tool sets": [d.awsEnabled ? "AWS" : null, d.dockerEnabled ? "Docker" : null].filter(Boolean).join(", ") || "none" });
+        const r = d.recent || [];
+        $("recent").innerHTML = r.length ? r.map(s => `<tr><td>${fmt(s.at)}</td><td>${esc(s.platform || "—")}</td>
+          <td class="mono">${esc(s.workflowId ?? "—")} / ${esc(s.taskId ?? "—")}</td><td class="mono">${esc(s.capability)}</td>
+          <td><span class="st st-${esc(s.status)}">${esc(s.status)}</span></td><td>${esc(s.note ?? "")}</td></tr>`).join("")
+          : '<tr><td colspan="6" class="empty">No steps yet.</td></tr>';
+        $("dash-foot").textContent = "Updated " + new Date().toLocaleTimeString();
+        loadDiscovery();
+      } catch (e) { $("dash-sub").textContent = "Could not reach the executor: " + e.message; }
+    }
+    async function loadDiscovery() {
+      try {
+        const reports = await (await fetch("api/discovery/last", { cache: "no-store" })).json();
+        $("discovery").innerHTML = (reports && reports.length)
+          ? reports.map(discoveryReport).join("")
+          : '<div class="empty">Nothing reported yet. OAK posts a snapshot once connected and an AWS role is linked.</div>';
+      } catch (e) { $("discovery").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    // Grouped BY HOST: each EC2 instance with the services running on it (its containers, then its host
+    // processes) nested underneath — so "what runs where" reads directly. RDS and anything whose host isn't
+    // in the snapshot are shown as standalone tables.
+    function discoveryReport(r) {
+      const res = r.resources || [];
+      const hosts = res.filter(x => x.type === "EC2_INSTANCE");
+      const containers = res.filter(x => x.type === "DOCKER_CONTAINER");
+      const processes = res.filter(x => x.type === "HOST_PROCESS");
+      const dbs = res.filter(x => x.type === "RDS_INSTANCE");
+      const hostIds = new Set(hosts.map(h => h.id));
+      const known = ["EC2_INSTANCE", "DOCKER_CONTAINER", "HOST_PROCESS", "RDS_INSTANCE"];
+
+      const hostBlocks = hosts.map(h => hostSection(h,
+        containers.filter(c => c.hostInstanceId === h.id),
+        processes.filter(p => p.hostInstanceId === h.id))).join("");
+
+      const standalone = [];
+      if (dbs.length) standalone.push(labelledTable("Databases (RDS)", dbs, []));
+      const orphanC = containers.filter(c => !hostIds.has(c.hostInstanceId));
+      const orphanP = processes.filter(p => !hostIds.has(p.hostInstanceId));
+      if (orphanC.length) standalone.push(labelledTable("Containers (host not in snapshot)", orphanC, []));
+      if (orphanP.length) standalone.push(labelledTable("Processes (host not in snapshot)", orphanP, []));
+      const others = {};
+      res.filter(x => !known.includes(x.type)).forEach(x => (others[x.type] = others[x.type] || []).push(x));
+      Object.keys(others).sort().forEach(t => standalone.push(labelledTable(t, others[t], [])));
+
+      const body = hostBlocks + standalone.join("");
+      return `<div class="card">
+        <div class="plhead"><span class="nm">${esc(r.platform)} <span class="cnt">· ${r.resourceCount} resource(s)</span></span>
+          <span class="badge ${r.changed ? "b-ok" : "b-idle"}">${r.changed ? "changed" : "unchanged"}</span></div>
+        <div class="sub" style="margin:0 0 8px">Reported ${fmt(r.at)}</div>
+        ${body || '<div class="empty">No resources found.</div>'}</div>`;
+    }
+    function hostSection(host, containers, processes) {
+      const name = (host.tags && host.tags.Name) ? host.tags.Name + " — " : "";
+      const meta = ["state", "instanceType", "availabilityZone", "privateIp"].map(k => host[k]).filter(Boolean).join(" · ");
+      const svc = [];
+      if (containers.length) svc.push(labelledTable("Containers", containers, ["hostInstanceId", "region"]));
+      if (processes.length) svc.push(labelledTable("Processes", processes, ["hostInstanceId", "region"]));
+      const empty = svc.length ? ""
+        : '<div class="sub" style="margin:2px 0 4px">No containers or processes reported — host not SSM-managed, the linked role lacks ssm:SendCommand, or nothing is running (see the OAK log for the reason).</div>';
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div class="nm mono" style="font-size:13px">🖥 ${esc(host.id)} <span class="cnt" style="font-family:inherit">${esc(name)}${esc(meta)}</span></div>
+        ${svc.join("") || empty}</div>`;
+    }
+    // Columns are derived from the facts present (minus omitted keys), so each type renders its own detail
+    // without a hardcoded schema. Map facts (tags, labels) render as chips.
+    function labelledTable(label, items, omit) {
+      const skip = new Set(["type", "id", ...(omit || [])]);
+      const scalar = [], maps = [], seen = {};
+      items.forEach(x => Object.keys(x).forEach(k => {
+        if (skip.has(k) || seen[k]) return;
+        seen[k] = 1;
+        (x[k] && typeof x[k] === "object" ? maps : scalar).push(k);
+      }));
+      const headers = ["id", ...scalar, ...maps].map(h => `<th>${esc(h)}</th>`).join("");
+      const rows = items.map(x => {
+        const cells = [`<td class="mono">${esc(x.id)}</td>`];
+        scalar.forEach(k => cells.push(`<td>${esc(x[k] ?? "—")}</td>`));
+        maps.forEach(k => cells.push(`<td>${mapChips(x[k])}</td>`));
+        return `<tr>${cells.join("")}</tr>`;
+      }).join("");
+      return `<div class="lbl">${esc(label)} <span class="cnt">(${items.length})</span></div>
+        <table style="margin-bottom:8px;display:block;overflow-x:auto"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function mapChips(m) {
+      const e = Object.entries(m || {});
+      return e.length ? e.map(([k, v]) => `<span class="chip">${esc(k)}=${esc(v)}</span>`).join(" ") : "—";
+    }
+    function kv(obj) { return Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`).join(""); }
+
+    // ---- tools ----
+    async function loadTools() {
+      try {
+        const tools = await (await fetch("api/tools", { cache: "no-store" })).json();
+        const groups = {};
+        tools.forEach(t => { (groups[t.group] = groups[t.group] || {}); (groups[t.group][t.service] = groups[t.group][t.service] || []).push(t); });
+        const order = ["AWS", "Docker", "Other"];
+        const names = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+        $("toolgroups").innerHTML = names.length ? names.map(g => groupAcc(g, groups[g])).join("") : '<div class="empty">No tools.</div>';
+        wireAccordions();
+      } catch (e) { $("toolgroups").innerHTML = '<div class="empty">Could not load tools: ' + esc(e.message) + "</div>"; }
+    }
+    function groupAcc(group, services) {
+      const svcNames = Object.keys(services).sort();
+      const count = Object.values(services).reduce((n, a) => n + a.length, 0);
+      const multi = svcNames.length > 1 || (svcNames.length === 1 && svcNames[0] !== "General");
+      const body = multi
+        ? svcNames.map(s => `<div class="acc svc"><button class="acc-h"><span>${esc(s)} <span class="cnt">(${services[s].length})</span></span><span class="caret">›</span></button><div class="acc-b">${services[s].map(toolRow).join("")}</div></div>`).join("")
+        : (services[svcNames[0]] || []).map(toolRow).join("");
+      return `<div class="acc"><button class="acc-h"><span>${esc(group)} <span class="cnt">(${count})</span></span><span class="caret">›</span></button><div class="acc-b">${body}</div></div>`;
+    }
+    function toolRow(t) {
+      const keys = (t.inputKeys || []).map(k => `<span class="chip">${esc(k)}</span>`).join(" ");
+      const inactive = t.active === false;
+      const state = inactive
+        ? `<span class="badge b-idle" title="${esc(t.inactiveReason || "")}">inactive</span>`
+        : `<span class="badge b-ok">active</span>`;
+      const cap = t.capability;
+      // Only READ tools can be run from here (WRITE/DESTRUCTIVE run only via an approved platform step),
+      // and only when active (their provider is configured). This is also enforced server-side.
+      const runnable = t.permission === "READ" && !inactive;
+      const inputs = (t.inputKeys || []).map(k =>
+        `<input class="ri" data-k="${esc(k)}" placeholder="${esc(k)} (comma-separate a list)">`).join("");
+      const run = runnable ? `
+        <div class="lbl">Run <span class="sub" style="text-transform:none;font-weight:400">— read-only, against the linked account</span></div>
+        <div class="runform" id="rf-${esc(cap)}">${inputs}
+          <button class="btn run" onclick="runTool('${esc(cap)}')">Run</button></div>
+        <div class="runout" id="ro-${esc(cap)}"></div>` : "";
+      return `<div class="tool" style="${inactive ? "opacity:.6" : ""}">
+        <div class="top"><span class="cap">${esc(cap)}</span><span class="st perm-${esc(t.permission)}">${esc(t.permission)}</span>${state}</div>
+        <div class="desc">${esc(t.description || "")}${inactive && t.inactiveReason ? ' — <i>' + esc(t.inactiveReason) + "</i>" : ""}</div>
+        ${keys ? `<div class="lbl">Inputs</div><div class="chips">${keys}</div>` : ""}
+        <div class="lbl">Preview</div><div class="pre">${esc(t.preview || "—")}</div>
+        ${run}
+      </div>`;
+    }
+    async function runTool(cap) {
+      const form = document.getElementById("rf-" + cap), out = document.getElementById("ro-" + cap);
+      const input = {};
+      form.querySelectorAll(".ri").forEach(i => {
+        const v = i.value.trim();
+        if (v) input[i.dataset.k] = v.includes(",") ? v.split(",").map(s => s.trim()).filter(Boolean) : v;
+      });
+      const btn = form.querySelector("button.run");
+      btn.disabled = true; out.innerHTML = '<div class="sub">Running…</div>';
+      try {
+        const d = await (await fetch("api/tools/run", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ capability: cap, input }) })).json();
+        if (!d.ok) { out.innerHTML = `<div class="banner">${esc(d.error || "failed")}</div>`; return; }
+        renderRunResult(out, d);
+      } catch (e) { out.innerHTML = `<div class="banner">${esc(e.message)}</div>`; }
+      finally { btn.disabled = false; }
+    }
+    function renderRunResult(out, d) {
+      const badge = d.success
+        ? '<span class="badge b-ok">exit 0</span>'
+        : `<span class="badge b-err">exit ${esc(d.exitCode)}${d.timedOut ? " · timed out" : ""}</span>`;
+      let stdout = d.stdout || "";
+      try { if (stdout.trim()) stdout = JSON.stringify(JSON.parse(stdout), null, 2); } catch (e) { /* not JSON */ }
+      let body = `<div style="margin:6px 0">${badge}</div>`;
+      const hint = d.success ? "" : runHint(d.stderr || "");
+      if (hint) body += `<div class="banner" style="background:var(--warn-bg);color:var(--warn)">${esc(hint)}</div>`;
+      if (stdout.trim()) body += `<div class="pre" style="white-space:pre;max-height:340px;overflow:auto">${esc(stdout)}</div>`;
+      if ((d.stderr || "").trim()) body += `<div class="lbl">stderr</div><div class="pre" style="white-space:pre-wrap">${esc(d.stderr)}</div>`;
+      if (!stdout.trim() && !(d.stderr || "").trim()) body += '<div class="sub">No output.</div>';
+      out.innerHTML = body;
+    }
+    // Local, UI-only reading of a failed run's stderr into a likely cause + fix. Never sent anywhere.
+    function runHint(stderr) {
+      const s = (stderr || "").toLowerCase();
+      if (!s.trim()) return "";
+      if (s.includes("token has expired") || s.includes("sso") || (s.includes("token") && s.includes("refresh")))
+        return "Your AWS SSO session on the oak host looks expired — run `aws sso login` there (or ensure oak's instance role can assume the linked role), then Run again.";
+      if (s.includes("sts:assumerole") || (s.includes("assumerole") && s.includes("not authorized")))
+        return "oak's host identity can't assume the linked role — check the role's trust policy (external id + principal) and the assume-role policy on oak's identity.";
+      if (s.includes("unable to locate credentials") || s.includes("invalidclienttokenid") || s.includes("security token") && s.includes("invalid"))
+        return "oak has no valid AWS credentials — configure the host identity (SSO profile or instance role) that assumes the linked role.";
+      if (s.includes("accessdenied") || s.includes("not authorized to perform"))
+        return "The linked role is missing a permission for this action — add it to the role's permissions policy (see the AWS setup in Settings).";
+      if (s.includes("could not connect") || s.includes("command not found") || s.includes("no such file"))
+        return "The AWS CLI isn't installed or reachable on the oak host — install it so oak can run AWS commands.";
+      return "";
+    }
+    function wireAccordions() {
+      document.querySelectorAll("#toolgroups .acc-h").forEach(h => h.onclick = (e) => {
+        e.stopPropagation(); h.parentElement.classList.toggle("open");
+      });
+    }
+
+    // ---- settings ----
+    async function loadSettings() {
+      try {
+        const d = await (await fetch("api/status", { cache: "no-store" })).json();
+        const p = (d.platforms || [])[0];
+        if (p) { $("inName").value = p.name || ""; $("inBaseUrl").value = p.baseUrl || ""; }
+        $("setinfo").innerHTML = kv({ "Service name": d.serviceName, Version: d.serviceVersion,
+          "Poll interval": d.pollInterval, "Worker threads": d.workerThreads,
+          "AWS tools": d.awsEnabled ? "enabled" : "disabled", "Docker tools": d.dockerEnabled ? "enabled" : "disabled" });
+      } catch (e) { $("setinfo").innerHTML = '<dd class="empty">Could not load: ' + esc(e.message) + "</dd>"; }
+      loadToolSettings();
+      loadDbConnections();
+    }
+
+    // ---- database connections ----
+    async function loadDbConnections() {
+      try {
+        const conns = await (await fetch("api/db-connections", { cache: "no-store" })).json();
+        const ids = Object.keys(conns).sort();
+        $("dbconns").innerHTML = ids.length ? `<table><thead><tr>
+          <th>dbIdentifier</th><th>Username</th><th>Database</th><th>Auth</th><th>Host</th><th>Port</th><th>Region</th><th></th></tr></thead>
+          <tbody>${ids.map(id => dbRow(id, conns[id])).join("")}</tbody></table>`
+          : '<div class="empty">No databases configured. Add one below.</div>';
+      } catch (e) { $("dbconns").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    function dbRow(id, c) {
+      const auth = c.authMode === "PASSWORD" ? ("password" + (c.passwordSet ? " ✓" : " (not set)")) : "IAM";
+      return `<tr><td class="mono">${esc(id)}</td><td>${esc(c.username)}</td><td>${esc(c.database)}</td><td>${esc(auth)}</td>
+        <td class="mono">${esc(c.host || "— (RDS)")}</td><td>${esc(c.port ?? "5432")}</td><td>${esc(c.region ?? "—")}</td>
+        <td><button class="btn ghost" onclick="deleteDb('${esc(id)}')">Remove</button></td></tr>`;
+    }
+    async function deleteDb(id) {
+      await fetch("api/db-connections/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dbIdentifier: id }) });
+      loadDbConnections();
+    }
+    async function saveDb() {
+      const body = { dbIdentifier: $("db_id").value.trim(), username: $("db_user").value.trim(),
+        database: $("db_name").value.trim(), authMode: $("db_auth").value,
+        password: $("db_pass").value || null, host: $("db_host").value.trim() || null,
+        port: $("db_port").value.trim() ? parseInt($("db_port").value.trim(), 10) : null,
+        region: $("db_region").value.trim() || null };
+      try {
+        const d = await (await fetch("api/db-connections", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+        if (!d.ok) { $("dbMsg").textContent = d.error || "failed"; return; }
+        ["db_id", "db_user", "db_name", "db_pass", "db_host", "db_port", "db_region"].forEach(i => $(i).value = "");
+        $("dbMsg").textContent = "Saved."; loadDbConnections();
+      } catch (e) { $("dbMsg").textContent = "Save failed: " + e.message; }
+    }
+
+    // Editable fields per group; the store itself is generic. AWS also shows a read-only External ID.
+    const TOOL_FIELDS = {
+      AWS: [
+        { env: "AWS_ROLE_ARN", label: "Role ARN", ph: "arn:aws:iam::<account>:role/oak-runner" },
+        { env: "AWS_REGION", label: "Region", ph: "us-west-2" },
+        { env: "AWS_PROFILE", label: "CLI profile (source identity)", ph: "e.g. pranit-dev-admin — local profile whose creds assume the role; blank = default/instance role" }
+      ],
+      Docker: [{ env: "DOCKER_HOST", label: "Docker host", ph: "unix:///var/run/docker.sock or tcp://host:2375" }]
+    };
+
+    let OAK_IDENTITY = {};
+
+    async function loadToolSettings() {
+      let data = { groups: {}, oakIdentity: {} };
+      try { data = await (await fetch("api/tool-settings", { cache: "no-store" })).json(); } catch (e) { /* show empty */ }
+      OAK_IDENTITY = data.oakIdentity || {};
+      const groups = data.groups || {};
+      $("toolsettings").innerHTML = Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, groups[g] || {})).join("");
+      Object.keys(TOOL_FIELDS).forEach(g => { $("tsBtn_" + g).onclick = () => saveToolSettings(g); });
+    }
+
+    const AWS_POLICY = JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+        Effect: "Allow",
+        Action: [
+          "ec2:DescribeInstances", "ec2:DescribeInstanceStatus", "ec2:StartInstances", "ec2:StopInstances", "ec2:RebootInstances",
+          "autoscaling:DescribeAutoScalingGroups",
+          "rds:DescribeDBInstances", "rds:DescribeEvents", "rds:StartDBInstance", "rds:StopDBInstance", "rds:RebootDBInstance", "rds:CreateDBSnapshot",
+          "cloudwatch:DescribeAlarms", "cloudwatch:GetMetricStatistics", "logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogGroups",
+          "s3:ListAllMyBuckets", "s3:ListBucket", "s3:GetObject", "s3:DeleteObject",
+          "elasticache:DescribeCacheClusters", "elasticache:DescribeReplicationGroups", "elasticache:DescribeEvents", "elasticache:RebootCacheCluster",
+          "kafka:ListClusters", "kafka:DescribeCluster", "kafka:ListNodes", "kafka:GetBootstrapBrokers", "kafka:RebootBroker",
+          "ssm:SendCommand", "ssm:ListCommandInvocations", "ssm:GetCommandInvocation",
+          "rds-db:connect"
+        ],
+        Resource: "*"
+      }]
+    }, null, 2);
+
+    function awsTrustPolicy(externalId) {
+      // Always the account ROOT, never the raw caller ARN: an SSO/assumed-role ARN is a session and is
+      // invalid as a trust principal. Root + external id is the safe, standard pattern.
+      const principal = "arn:aws:iam::" + (OAK_IDENTITY.account || "<oak-caller-account-id>") + ":root";
+      return JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{ Effect: "Allow", Principal: { AWS: principal }, Action: "sts:AssumeRole",
+          Condition: { StringEquals: { "sts:ExternalId": externalId || "<external id above>" } } }]
+      }, null, 2);
+    }
+
+    function awsHelp(externalId) {
+      const acct = OAK_IDENTITY.account, arn = OAK_IDENTITY.arn;
+      const runsAs = acct
+        ? `<p>oak-service runs as AWS account <b class="mono">${esc(acct)}</b>${arn ? ' (<span class="mono">' + esc(arn) + "</span>)" : ""} —
+           the trust policy below trusts <span class="mono">arn:aws:iam::${esc(acct)}:root</span>, gated by the External ID.</p>`
+        : `<div class="banner" style="background:var(--warn-bg);color:var(--warn)">oak-service's AWS caller identity isn't
+           detected — it needs base credentials to assume the role (an EC2/ECS role on an AWS host, or IAM user keys / SSO
+           on-premise). Configure those, then run <span class="mono">aws sts get-caller-identity</span> on the oak host and
+           use its <b>Account</b> in the trust policy Principal below.</div>`;
+      return `${runsAs}
+        <p><b>oak always assumes a dedicated role</b> — it never relies on the host's own permissions. So there are two
+        identities: oak's <b>host identity</b> (the caller) needs <i>only</i> permission to assume the role — no product
+        access; the <b>linked role</b> holds all the tool permissions. This holds whether oak runs in the same account as
+        the resources or a different one — same flow either way.</p>
+        <ol style="margin:6px 0 8px 18px;padding:0">
+          <li>In the account you want to manage: <b>IAM → Roles → Create role → Another AWS account</b>, enter oak's caller
+            account id (<span class="mono">${esc(acct || "<from get-caller-identity>")}</span>), tick <i>Require external ID</i>, paste the External ID.</li>
+          <li>Attach the <b>role permissions policy</b> below — the actions the built-in tools call.</li>
+          <li>Grant oak's host identity the <b>assume-role policy</b> below (its only AWS permission).</li>
+          <li>Copy the new role's ARN into <b>Role ARN</b>, set <b>Region</b>, and Save.</li>
+        </ol>
+        <p class="sub" style="margin:0 0 6px">Tip: to narrow the trust, replace <span class="mono">:root</span> with the exact
+        role/user ARN oak runs as (an instance-role ARN, or an IAM user ARN — not an SSO session ARN).</p>
+        <details><summary class="mono" style="cursor:pointer">Trust policy (on the role)</summary>
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(awsTrustPolicy(externalId))}</div></details>
+        <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Role permissions policy (built-in tools)</summary>
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:200px;overflow:auto">${esc(AWS_POLICY)}</div></details>
+        <details style="margin-top:6px"><summary class="mono" style="cursor:pointer">Assume-role policy (on oak's host identity)</summary>
+          <div class="pre" style="margin-top:8px;white-space:pre;max-height:160px;overflow:auto">${esc(assumePolicy())}</div></details>
+        <p class="sub" style="margin:8px 0 0"><b>Running commands inside an instance (SSM Run Command):</b> the
+          <span class="mono">AWS_SSM_RUN_COMMAND</span> tool executes shell on the target through AWS Systems Manager — oak
+          never logs into the host. This needs the <b>SSM agent installed and running</b> on the target instance and an IAM
+          <b>instance profile with SSM permissions</b> so the instance is SSM-managed. oak cannot check that ahead of time; if
+          the agent is missing, the step's result says so (<i>the target is not an SSM-managed instance…</i>).</p>`;
+    }
+
+    function assumePolicy() {
+      const roleArn = ($("ts_AWS_AWS_ROLE_ARN") && $("ts_AWS_AWS_ROLE_ARN").value.trim()) || "<the Role ARN below>";
+      return JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{ Effect: "Allow", Action: "sts:AssumeRole", Resource: roleArn }]
+      }, null, 2);
+    }
+
+    const DOCKER_HELP = `<p><b>oak-service runs the <span class="mono">docker</span> CLI against this host's Docker daemon.</b>
+      Leave <b>Docker host</b> blank to use the default local socket; set it (e.g. <span class="mono">tcp://host:2375</span>
+      or a non-default <span class="mono">unix://</span> socket) only to target a different daemon. Docker uses this
+      section only — the AWS role does not apply to <span class="mono">docker</span> commands.</p>`;
+
+    function toolGroupForm(group, view) {
+      const values = (view.values) || {};
+      const secretsSet = (view.secretsSet) || [];
+      const rows = TOOL_FIELDS[group].map(f => {
+        const id = "ts_" + group + "_" + f.env;
+        const val = f.secret ? "" : esc(values[f.env] || "");
+        const ph = f.secret ? (secretsSet.includes(f.env) ? "configured — blank keeps it" : "not set") : esc(f.ph || "");
+        return `<label for="${id}">${esc(f.label)}</label><input id="${id}" ${f.secret ? 'type="password"' : 'class="mono"'} value="${val}" placeholder="${ph}">`;
+      }).join("");
+      const extra = group === "AWS"
+        ? `<label>External ID</label><input class="mono" value="${esc(view.externalId || "")}" readonly title="Generated by OAK — put this in the role trust policy">`
+        : "";
+      const help = group === "AWS" ? awsHelp(view.externalId) : (group === "Docker" ? DOCKER_HELP : "");
+      const helpBlock = help ? `<div class="sub" style="margin:0 0 14px">${help}</div>` : "";
+      return `<div class="card"><h2>${esc(group)} setup</h2>${helpBlock}<div class="kv">${rows}${extra}
+        <span></span><span><button class="btn" id="tsBtn_${group}">Save ${esc(group)} settings</button></span></div>
+        <div class="sub" id="tsMsg_${group}" style="margin:12px 0 0"></div></div>`;
+    }
+
+    async function saveToolSettings(group) {
+      $("tsMsg_" + group).textContent = "Saving…";
+      const env = {};
+      TOOL_FIELDS[group].forEach(f => { env[f.env] = $("ts_" + group + "_" + f.env).value; });
+      try {
+        const res = await fetch("api/tool-settings", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ group, env }) });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        $("tsMsg_" + group).textContent = "Saved. Applies to the next step.";
+        TOOL_FIELDS[group].forEach(f => { if (f.secret) $("ts_" + group + "_" + f.env).value = ""; });
+      } catch (e) { $("tsMsg_" + group).textContent = "Save failed: " + e.message; }
+    }
+    $("saveBtn").onclick = async () => {
+      $("saveMsg").textContent = "Saving…";
+      try {
+        const res = await fetch("api/settings", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ platform: $("inName").value.trim() || "oppex", baseUrl: $("inBaseUrl").value.trim(),
+            clientId: $("inClientId").value.trim(), pairingSecret: $("inPairingSecret").value }) });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        $("inPairingSecret").value = "";
+        $("saveMsg").textContent = "Saved. Connecting… check the Dashboard.";
+      } catch (e) { $("saveMsg").textContent = "Save failed: " + e.message; }
+    };
+
+    // ---- boot ----
+    // Re-run the loader for whichever view is showing.
+    function refreshActive() { show(views.find(v => $(v).classList.contains("active")) || "dashboard"); }
+    $("refreshBtn").onclick = refreshActive;
+    $("dbSaveBtn").onclick = saveDb;
+    show(location.hash.slice(1) || "dashboard");
+    // Gentle auto-refresh of the Dashboard every 5 minutes; use the Refresh button for an immediate update.
+    setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 300000);
+  </script>
+</body>
+</html>

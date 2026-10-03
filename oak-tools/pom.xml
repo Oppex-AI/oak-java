@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>ai.oppex</groupId>
+    <artifactId>oak-tools-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>oak-tools</artifactId>
+  <name>OAK Tools :: Core</name>
+  <description>
+    Framework-free core: the Tool contract, the ToolRegistry, and the generic AWS and Docker tools.
+    Plain JDK (Java 17), no external dependencies — it compiles on any consumer's JVM. The tools
+    render the command a step would run; execution and any remote transport live in a layer above.
+  </description>
+
+  <!-- No compile dependencies on purpose. A Tool works on Map<String,Object> and builds a command
+       string; JSON, logging and any cloud SDK are a caller's concern, not the core's. -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,32 @@
+/*
+ * Copyright 2026 Oak Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package ai.oak.service.connection;
+
+/** Where a platform connection is in its lifecycle, for logs and the management UI. */
+public enum ConnectionPhase {
+    /** Not enough config to connect (no base URL, or no client id + pairing secret). */
+    IDLE,
+    /** Starting a pairing attempt. */
+    PAIRING,
+    /** Paired, waiting for an admin to approve on the platform side. */
+    PENDING_APPROVAL,
+    /** Registered and polling for steps. */
+    CONNECTED,
+    /** Was connected; the token was rejected/revoked and re-pairing is under way. */
+    DISCONNECTED,
+    /** A transient error (network, platform down); will retry. */
+    ERROR
+}

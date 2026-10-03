@@ -1,0 +1,49 @@
+# One authoritative CI workflow. `mvn verify` is the project's own gate — it runs,
+# in order: Checkstyle (validate, report-only), compile, Surefire unit tests, the
+# Quarkus build of oak-service, and Spotless check (verify, fails on format/header drift).
+# So a single job covers compile + unit tests + module build + static analysis.
+#
+# The status check to make required in the branch ruleset is:  CI / build
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # verify = checkstyle + compile + unit tests + quarkus build + spotless check.
+      # -B batch mode, -ntp no transfer progress, -e for a readable trace on failure.
+      - name: Build and verify
+        run: mvn -B -ntp -e verify
+
+      - name: Upload test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          if-no-files-found: ignore
+          retention-days: 7

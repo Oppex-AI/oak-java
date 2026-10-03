@@ -3,12 +3,50 @@
 This agent runs inside customer infrastructure and executes operational steps against production
 systems. We take reports about it seriously.
 
+## Supported versions
+
+OAK is pre-1.0 and under active development. Security fixes land on `main` and in the next
+release; there are no maintained older release branches yet. Report against the latest `main`
+or the most recent tag.
+
+| Version | Supported |
+|---|---|
+| `main` / latest release | ✅ |
+| older pre-1.0 tags | ❌ (upgrade) |
+
 ## Reporting a vulnerability
 
-Email **support@oppex.ai** with enough detail to reproduce. Please do not open a public issue for
-anything exploitable.
+Email **support@oppex.ai**, or use GitHub's **private vulnerability reporting**
+("Report a vulnerability" under the repository's Security tab) once the repository is public.
+Please do **not** open a public issue, discussion, or PR for anything exploitable.
+
+Please include, as far as you can:
+
+- what the issue is and the impact you think it has;
+- the affected module (`oak-tools` / `oak-service`), version or commit;
+- steps or a proof of concept to reproduce it.
+
+**Do not put secrets or real infrastructure detail in the report** — no credentials, API keys,
+tokens, AWS account IDs/ARNs, database endpoints, or customer data. Describe the shape of the
+problem, not live values. And please don't publicly disclose the issue until we've had a chance
+to fix it and agree on timing.
 
 We will acknowledge within three working days and keep you updated until it's resolved.
+
+## Security-sensitive areas
+
+A report touching any of these gets priority and a security review on any fix. These are also
+the paths guarded by [`.github/CODEOWNERS`](.github/CODEOWNERS):
+
+- **Authentication** and the pairing handshake
+- **API keys / credentials** and the encrypted credential store
+- **Remote transport** (the outbound `/v1/tools` client)
+- **Tool permission enforcement** and the `READ`/`WRITE`/`DESTRUCTIVE` classification
+- **Destructive operations** (e.g. `DB_TERMINATE`)
+- **AWS** credentials / role assumption, and **SSM** in-instance execution
+- **Docker** execution
+- **Database** execution
+- **Command execution** (argv building / process launch)
 
 ## Design properties worth knowing when assessing this
 
