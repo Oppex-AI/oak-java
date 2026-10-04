@@ -190,7 +190,9 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         <div class="card">
           <div id="dbconns"><div class="empty">Loading…</div></div>
           <div class="kv" style="margin-top:12px">
-            <label>dbIdentifier</label><input id="db_id" placeholder="orders-db (RDS instance id or logical name)">
+            <label>Discovered DB</label>
+            <select id="db_pick"><option value="">— pick a discovered database (or Other) —</option></select>
+            <label>dbIdentifier</label><input id="db_id" placeholder="pick above, or type an RDS id / logical name">
             <label>DB username</label><input id="db_user" placeholder="oak_runner">
             <label>Database</label><input id="db_name" placeholder="appdb">
             <label>Auth</label><select id="db_auth"><option value="IAM">RDS IAM token (no password)</option><option value="PASSWORD">Password</option></select>
@@ -470,6 +472,39 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
           <tbody>${ids.map(id => dbRow(id, conns[id])).join("")}</tbody></table>`
           : '<div class="empty">No databases configured. Add one below.</div>';
       } catch (e) { $("dbconns").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+      loadDiscoveredDbs();
+    }
+
+    // Populate the dbIdentifier picker from what discovery last reported — the RDS instance ids here are the
+    // exact dbIdentifiers the platform sends, so choosing one avoids a typo'd mismatch. "Other" = free type.
+    async function loadDiscoveredDbs() {
+      const sel = $("db_pick");
+      if (!sel) return;
+      const rds = [];
+      try {
+        const reports = await (await fetch("api/discovery/last", { cache: "no-store" })).json();
+        const seen = new Set();
+        (reports || []).forEach(r => (r.resources || []).forEach(res => {
+          if (res.type === "RDS_INSTANCE" && !seen.has(res.id)) { seen.add(res.id); rds.push(res); }
+        }));
+      } catch (e) { /* leave manual-only */ }
+      rds.sort((a, b) => a.id.localeCompare(b.id));
+      const opts = rds.map(r => {
+        const f = r.facts || {};
+        const label = esc(r.id) + (f.endpoint ? " — " + esc(f.endpoint) : "");
+        return `<option value="${esc(r.id)}" data-port="${esc(f.port || "")}" data-region="${esc(f.region || "")}">${label}</option>`;
+      }).join("");
+      sel.innerHTML = `<option value="">${rds.length ? "— pick a discovered database —" : "— none discovered yet; use Other —"}</option>`
+        + opts + `<option value="__other__">Other / not discovered (enter manually)</option>`;
+      sel.onchange = () => {
+        const o = sel.selectedOptions[0];
+        if (!o || !o.value) return;
+        if (o.value === "__other__") { $("db_id").value = ""; $("db_id").focus(); return; }
+        $("db_id").value = o.value;     // matches the platform's dbIdentifier exactly
+        $("db_host").value = "";        // blank → OAK auto-resolves the RDS endpoint
+        if (o.dataset.port) $("db_port").value = o.dataset.port;
+        if (o.dataset.region) $("db_region").value = o.dataset.region;
+      };
     }
     function dbRow(id, c) {
       const auth = c.authMode === "PASSWORD" ? ("password" + (c.passwordSet ? " ✓" : " (not set)")) : "IAM";
