@@ -27,6 +27,27 @@ mvn -pl oak-service quarkus:dev
 Unconfigured, it boots idle (tools wired, not polling) rather than failing. See the
 [root README](../README.md#configuration) for all `oak.*` keys.
 
+## Container image
+
+`src/main/docker/Dockerfile.jvm` ships the **`aws` and `docker` CLIs** in the image — a runtime
+contract, because the built-in tools shell out to them (ProcessBuilder, no SDK). Versions are pinned
+via `ARG` (`AWS_CLI_VERSION`, `DOCKER_CLI_VERSION`); bump them intentionally. Build from the repo root:
+
+```bash
+docker build -f oak-service/src/main/docker/Dockerfile.jvm -t oak-service .
+```
+
+When you run it:
+
+- **Persist settings** — mount a volume and set `OAK_DATA_DIR` to it, or a restart loses the pairing
+  token and regenerates the AWS external ID (`-v oak-data:/data -e OAK_DATA_DIR=/data`).
+- **Docker capabilities** require the **host docker socket** mounted — a privileged deployment mode:
+  `-v /var/run/docker.sock:/var/run/docker.sock` plus `--group-add $(stat -c '%g' /var/run/docker.sock)`
+  so the non-root service user can use it.
+- **AWS capabilities** assume a role via the host's identity; on EC2 the container must reach IMDS, so
+  set the instance metadata hop limit to 2 (otherwise credentials can't be fetched from inside the
+  container). See [AWS deployment](../docs/aws-deployment.md).
+
 ## Management UI
 
 **http://localhost:9020/** — connection status and last-seen, advertised capabilities, recent steps
