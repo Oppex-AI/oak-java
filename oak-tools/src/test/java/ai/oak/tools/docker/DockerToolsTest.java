@@ -52,6 +52,16 @@ class DockerToolsTest {
     }
 
     @Test
+    void psNormalizesBareFilterToNameButLeavesRealFiltersAlone() {
+        // A bare value (no '=') is never a valid docker filter — treat it as name=<value>.
+        assertEquals("docker ps --filter name=opx-client-service",
+                registry().render("DOCKER_PS", Map.of("filter", "opx-client-service")).orElseThrow());
+        // A real filter already has '=' and passes through untouched.
+        assertEquals("docker ps --filter status=running",
+                registry().render("DOCKER_PS", Map.of("filter", "status=running")).orElseThrow());
+    }
+
+    @Test
     void restartEmitsPlaceholderForMissingContainerAndIsWrite() {
         assertEquals("docker restart <container>", registry().render("DOCKER_RESTART", Map.of()).orElseThrow());
         assertEquals(ToolPermission.WRITE, registry().find("DOCKER_RESTART").orElseThrow().permission());
