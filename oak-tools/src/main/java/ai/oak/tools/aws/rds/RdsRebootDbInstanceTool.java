@@ -41,7 +41,7 @@ public final class RdsRebootDbInstanceTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("dbInstanceIdentifier", "region");
+        return List.of("dbInstanceIdentifier");
     }
 
     @Override

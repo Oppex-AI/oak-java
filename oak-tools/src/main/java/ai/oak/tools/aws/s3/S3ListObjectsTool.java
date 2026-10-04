@@ -41,7 +41,7 @@ public final class S3ListObjectsTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("bucket", "prefix", "region");
+        return List.of("bucket", "prefix");
     }
 
     @Override

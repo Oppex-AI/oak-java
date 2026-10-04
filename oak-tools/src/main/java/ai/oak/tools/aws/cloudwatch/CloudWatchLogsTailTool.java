@@ -41,7 +41,7 @@ public final class CloudWatchLogsTailTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("logGroupName", "since", "region");
+        return List.of("logGroupName", "since");
     }
 
     @Override

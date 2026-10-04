@@ -49,6 +49,9 @@ public class ToolSettingsResource {
     @Inject
     AwsCredentials aws;
 
+    @Inject
+    ai.oak.service.RegionProvider regions;
+
     @GET
     @Path("/tool-settings")
     @Produces(MediaType.APPLICATION_JSON)
@@ -73,7 +76,7 @@ public class ToolSettingsResource {
             final String externalId = "AWS".equals(group) ? settings.ensureExternalId(group) : null;
             out.put(group, new GroupView(values, secretsSet, externalId));
         }
-        return new View(out, aws.callerIdentity(settings.envFor("AWS").get("AWS_PROFILE")));
+        return new View(out, aws.callerIdentity(settings.envFor("AWS").get("AWS_PROFILE")), regions.region(), regions.source());
     }
 
     @POST
@@ -88,8 +91,12 @@ public class ToolSettingsResource {
         return Map.of("ok", true, "group", req.group().trim());
     }
 
-    /** The whole settings view: per-group config, plus this host's AWS identity for trust-policy help. */
-    public record View(Map<String, GroupView> groups, Map<String, String> oakIdentity) {
+    /**
+     * The whole settings view: per-group config, this host's AWS identity for trust-policy help, and the
+     * single {@code region} this OAK instance operates in plus where it resolved from ({@code regionSource}:
+     * setting / host-env / host-metadata).
+     */
+    public record View(Map<String, GroupView> groups, Map<String, String> oakIdentity, String region, String regionSource) {
     }
 
     /** Non-secret values, the names of secrets that are set, and (AWS) the OAK-issued external id. */

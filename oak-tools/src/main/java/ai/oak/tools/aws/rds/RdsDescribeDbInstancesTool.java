@@ -41,7 +41,7 @@ public final class RdsDescribeDbInstancesTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("dbInstanceIdentifier", "region");
+        return List.of("dbInstanceIdentifier");
     }
 
     @Override

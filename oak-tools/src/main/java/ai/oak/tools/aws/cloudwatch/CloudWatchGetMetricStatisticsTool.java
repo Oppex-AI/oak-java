@@ -41,7 +41,7 @@ public final class CloudWatchGetMetricStatisticsTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("namespace", "metricName", "dimensions", "startTime", "endTime", "period", "statistics", "region");
+        return List.of("namespace", "metricName", "dimensions", "startTime", "endTime", "period", "statistics");
     }
 
     @Override

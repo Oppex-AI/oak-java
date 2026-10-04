@@ -62,7 +62,7 @@ public final class DockerLogsTool implements Tool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("container", "instanceId", "region", "since", "until", "tail", "grep");
+        return List.of("container", "instanceId", "since", "until", "tail", "grep");
     }
 
     @Override

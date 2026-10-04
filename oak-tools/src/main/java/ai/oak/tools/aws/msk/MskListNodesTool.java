@@ -41,7 +41,7 @@ public final class MskListNodesTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("clusterArn", "region");
+        return List.of("clusterArn");
     }
 
     @Override

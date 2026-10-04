@@ -56,7 +56,7 @@ public final class DbTerminateTool implements Tool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("dbIdentifier", "region", "identity", "queryFingerprint", "verifyOnly");
+        return List.of("dbIdentifier", "identity", "queryFingerprint", "verifyOnly");
     }
 
     @Override

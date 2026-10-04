@@ -61,6 +61,9 @@ public class ExecutorAgent {
     ToolExecutor executor;
 
     @Inject
+    RegionProvider regions;
+
+    @Inject
     DiscoveryCollector discovery;
 
     private final Map<String, PlatformConnection> connections = new ConcurrentHashMap<>();
@@ -116,7 +119,7 @@ public class ExecutorAgent {
                 ? discovery::collect
                 : null;
         final PlatformConnection.Context ctx = new PlatformConnection.Context(store, registry, workers, status, service,
-                executor::envForCapability, catalog::isActive, snapshot);
+                executor::envForCapability, catalog::isActive, snapshot, regions::region);
         return new PlatformConnection(name, store.get(name), ctx, config.poll().interval().toMillis(),
                 config.discovery().interval().toMillis());
     }

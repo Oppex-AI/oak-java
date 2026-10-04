@@ -514,8 +514,27 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       try { data = await (await fetch("api/tool-settings", { cache: "no-store" })).json(); } catch (e) { /* show empty */ }
       OAK_IDENTITY = data.oakIdentity || {};
       const groups = data.groups || {};
-      $("toolsettings").innerHTML = Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, groups[g] || {})).join("");
+      $("toolsettings").innerHTML = regionNote(data)
+        + Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, groups[g] || {})).join("");
       Object.keys(TOOL_FIELDS).forEach(g => { $("tsBtn_" + g).onclick = () => saveToolSettings(g); });
+    }
+
+    // OAK is a region-scoped service: one instance serves exactly one region. We show which, and where it
+    // came from, so the operator can confirm it before it's reported to the platform at registration.
+    function regionNote(data) {
+      const r = data.region, src = data.regionSource;
+      const from = src === "setting" ? "from the Region field below"
+        : src === "host-env" ? "from the host environment (AWS_REGION)"
+        : src === "host-metadata" ? "from the host (EC2 instance metadata)"
+        : "not set";
+      const body = r
+        ? `This OAK instance is connected in <b>one region</b>: <span class="mono">${esc(r)}</span> (${from}).
+           It is reported to the platform at registration, and every tool runs in this region. To operate in
+           a different region, set the AWS <b>Region</b> below (it overrides the host default).`
+        : `This OAK instance operates in a <b>single region</b>, but none is set yet — set the AWS
+           <b>Region</b> below, or launch the host with <span class="mono">AWS_REGION</span>. Until then AWS
+           tools and discovery can't run.`;
+      return `<div class="card"><h2>Region</h2><div class="sub">${body}</div></div>`;
     }
 
     const AWS_POLICY = JSON.stringify({

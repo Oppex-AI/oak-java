@@ -46,7 +46,8 @@ class ProtocolMappingTest {
     void registrationRequestSerialisesToTheExpectedShape() throws Exception {
         final var request = new ToolServiceRegistrationRequest("oak-service", "0.1.0",
                 List.of(new CapabilityDeclaration("AWS_EC2_START_INSTANCES", ToolPermission.WRITE, "Start EC2 instances.",
-                        List.of("instanceIds", "region"))));
+                        List.of("instanceIds"))),
+                "us-west-2");
 
         final String json = mapper.writeValueAsString(request);
         final Map<String, Object> parsed = mapper.readValue(json, new TypeReference<>() {
@@ -54,12 +55,14 @@ class ProtocolMappingTest {
 
         assertEquals("oak-service", parsed.get("name"));
         assertEquals("0.1.0", parsed.get("version"));
+        // region is connection context, reported once at registration (OPD-666), not a per-tool input.
+        assertEquals("us-west-2", parsed.get("region"));
         @SuppressWarnings("unchecked")
         final var caps = (List<Map<String, Object>>) parsed.get("capabilities");
         assertEquals("AWS_EC2_START_INSTANCES", caps.get(0).get("capability"));
         assertEquals("WRITE", caps.get(0).get("permission"));
         assertEquals("Start EC2 instances.", caps.get(0).get("description"));
-        assertEquals(List.of("instanceIds", "region"), caps.get(0).get("inputKeys"));
+        assertEquals(List.of("instanceIds"), caps.get(0).get("inputKeys"));
     }
 
     @Test
