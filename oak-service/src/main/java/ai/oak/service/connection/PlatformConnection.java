@@ -273,7 +273,9 @@ public final class PlatformConnection {
 
     private void registerAndPoll() {
         final List<CapabilityDeclaration> declared = ctx.registry().all().stream().filter(t -> ctx.active().test(t.capability()))
-                .map(t -> new CapabilityDeclaration(t.capability(), t.permission(), t.description(), t.inputKeys())).toList();
+                .map(t -> new CapabilityDeclaration(t.capability(), t.permission(), t.description(), t.inputKeys(),
+                        t.approvalCandidateSource()))
+                .toList();
         try {
             client.register(
                     new ToolServiceRegistrationRequest(ctx.service().name(), ctx.service().version(), declared, oakRegion()));

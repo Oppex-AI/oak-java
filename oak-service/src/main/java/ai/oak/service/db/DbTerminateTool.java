@@ -16,6 +16,7 @@
 package ai.oak.service.db;
 
 import ai.oak.service.db.DbGateway.TerminateResult;
+import ai.oak.tools.ApprovalCandidateSource;
 import ai.oak.tools.Tool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.ToolResult;
@@ -57,6 +58,19 @@ public final class DbTerminateTool implements Tool {
     @Override
     public List<String> inputKeys() {
         return List.of("dbIdentifier", "identity", "queryFingerprint", "verifyOnly");
+    }
+
+    /**
+     * Select-then-approve: the target is ONE backend the operator picks from DB_LIST_ACTIVITY's output.
+     * Each {@code activities[]} row carries {@code identity} ({@code pid}+{@code backendStart}); the chosen
+     * row's {@code identity} is injected back into this tool's {@code identity} input, and the top-level row
+     * fields are shown to the approver (the SQL {@code query} is masked).
+     */
+    @Override
+    public ApprovalCandidateSource approvalCandidateSource() {
+        return new ApprovalCandidateSource("DB_LIST_ACTIVITY", "activities", "identity", "pid", "identity", List.of("query",
+                "durationSeconds", "state", "datname", "applicationName", "waitEventType", "waitEvent", "blockedBy"),
+                List.of("query"));
     }
 
     @Override

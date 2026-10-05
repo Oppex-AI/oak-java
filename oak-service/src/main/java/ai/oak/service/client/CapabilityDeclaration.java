@@ -15,6 +15,7 @@
  */
 package ai.oak.service.client;
 
+import ai.oak.tools.ApprovalCandidateSource;
 import ai.oak.tools.ToolPermission;
 import java.util.List;
 
@@ -24,8 +25,12 @@ import java.util.List;
  * serialises to its name (READ/WRITE/DESTRUCTIVE), which matches the platform's enum.
  *
  * <p>{@code inputKeys} is the tool's own input contract (e.g. {@code container} for DOCKER_RESTART,
- * {@code instanceIds}/{@code region} for EC2). The platform's planner emits exactly these keys instead of
- * guessing them — which is what stops the class of "tool got the wrong parameter name" failures.
+ * {@code instanceIds} for EC2). The platform's planner emits exactly these keys instead of guessing
+ * them — which is what stops the class of "tool got the wrong parameter name" failures.
+ *
+ * <p>{@code approvalCandidateSource} is set only for a select-then-approve DESTRUCTIVE capability (e.g.
+ * DB_TERMINATE picks one backend from DB_LIST_ACTIVITY); it is null otherwise and omitted from the wire.
  */
-public record CapabilityDeclaration(String capability, ToolPermission permission, String description, List<String> inputKeys) {
+public record CapabilityDeclaration(String capability, ToolPermission permission, String description, List<String> inputKeys,
+        ApprovalCandidateSource approvalCandidateSource) {
 }

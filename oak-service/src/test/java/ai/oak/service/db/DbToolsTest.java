@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ai.oak.tools.ApprovalCandidateSource;
 import ai.oak.tools.ToolResult;
 import java.util.HashMap;
 import java.util.List;
@@ -160,5 +161,18 @@ class DbToolsTest {
                 throw new DbAccessException(code, "no connection");
             }
         };
+    }
+
+    /** DB_TERMINATE's approval wiring must line up with DB_LIST_ACTIVITY's output: activities[].identity.pid. */
+    @Test
+    void dbTerminateAdvertisesSelectThenApproveSource() {
+        final ApprovalCandidateSource s = new DbTerminateTool(null).approvalCandidateSource();
+        assertEquals("DB_LIST_ACTIVITY", s.fromCapability());
+        assertEquals("activities", s.candidatesPath());
+        assertEquals("identity", s.identityField());
+        assertEquals("pid", s.idField());
+        assertEquals("identity", s.inputField());
+        assertTrue(s.displayFields().contains("query"));
+        assertEquals(List.of("query"), s.redactFields());
     }
 }

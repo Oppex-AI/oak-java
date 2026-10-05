@@ -46,7 +46,7 @@ class ProtocolMappingTest {
     void registrationRequestSerialisesToTheExpectedShape() throws Exception {
         final var request = new ToolServiceRegistrationRequest("oak-service", "0.1.0",
                 List.of(new CapabilityDeclaration("AWS_EC2_START_INSTANCES", ToolPermission.WRITE, "Start EC2 instances.",
-                        List.of("instanceIds"))),
+                        List.of("instanceIds"), null)),
                 "us-west-2");
 
         final String json = mapper.writeValueAsString(request);
