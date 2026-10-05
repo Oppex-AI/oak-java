@@ -175,4 +175,44 @@ class DbToolsTest {
         assertTrue(s.displayFields().contains("query"));
         assertEquals(List.of("query"), s.redactFields());
     }
+
+    @Test
+    void terminateSingleObjectReturnsOnePerIdResult() {
+        final FakeGateway gw = new FakeGateway();
+        gw.terminate = new DbGateway.TerminateResult(true, true);
+        final ToolResult r = new DbTerminateTool(providerReturning(gw))
+                .execute(Map.of("dbIdentifier", "orders-db", "identity", Map.of("pid", 101, "backendStart", REQ)));
+        assertTrue(r.success());
+        assertEquals(1, r.data().get("requested"));
+        assertEquals(1, r.data().get("terminated"));
+        final List<?> results = (List<?>) r.data().get("results");
+        assertEquals("terminated", ((Map<?, ?>) results.get(0)).get("status"));
+    }
+
+    @Test
+    void terminateArrayReturnsPerIdResultsAndCountsTerminated() {
+        final FakeGateway gw = new FakeGateway();
+        gw.terminate = new DbGateway.TerminateResult(true, true);
+        final ToolResult r = new DbTerminateTool(providerReturning(gw)).execute(Map.of("dbIdentifier", "orders-db", "identity",
+                List.of(Map.of("pid", 101, "backendStart", REQ), Map.of("pid", 102, "backendStart", REQ))));
+        assertTrue(r.success());
+        assertEquals(2, r.data().get("requested"));
+        assertEquals(2, r.data().get("terminated"));
+        assertEquals(2, ((List<?>) r.data().get("results")).size());
+    }
+
+    @Test
+    void terminateBatchFailsOnlyWhenUnreachable() {
+        final ToolResult r = new DbTerminateTool(providerThrowing("DB_UNREACHABLE")).execute(Map.of("dbIdentifier", "x",
+                "identity", List.of(Map.of("pid", 101, "backendStart", REQ), Map.of("pid", 102, "backendStart", REQ))));
+        assertFalse(r.success());
+        assertEquals("DB_UNREACHABLE", r.data().get("errorCode"));
+    }
+
+    @Test
+    void terminateRequiresIdentity() {
+        final ToolResult r = new DbTerminateTool(providerReturning(new FakeGateway())).execute(Map.of("dbIdentifier", "x"));
+        assertFalse(r.success());
+        assertEquals("TERMINATE_FAILED", r.data().get("errorCode"));
+    }
 }

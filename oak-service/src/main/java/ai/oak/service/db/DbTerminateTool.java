@@ -20,17 +20,29 @@ import ai.oak.tools.ApprovalCandidateSource;
 import ai.oak.tools.Tool;
 import ai.oak.tools.ToolPermission;
 import ai.oak.tools.ToolResult;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * DB_TERMINATE (DESTRUCTIVE) — the safe kill. Oppex dispatches it only after a human approved it, injecting
- * the full identity resolved from a persisted DB_LIST_ACTIVITY snapshot. OAK re-reads the backend at
- * terminate time and issues {@code pg_terminate_backend(pid)} ONLY IF the live {@code backend_start} still
- * equals the requested one — never by pid alone. A reused pid is {@code already_gone} (we killed nothing),
- * which is correct and safe. Idempotent. Works on RDS/Aurora (pure SQL, not an RDS reboot).
+ * the identity (or identities) resolved from a persisted DB_LIST_ACTIVITY snapshot. OAK re-reads each
+ * backend at terminate time and issues {@code pg_terminate_backend(pid)} ONLY IF the live
+ * {@code backend_start} still equals the requested one — never by pid alone. A reused pid is
+ * {@code pid_reused} (we killed nothing), which is correct and safe. Idempotent.
+ *
+ * <p>{@code identity} may be a single {@code {pid, backendStart}} object or an array of them. Multiple
+ * targets are fired with a small bounded worker pool (default 3, {@code OAK_DB_TERMINATE_MAX_CONCURRENCY})
+ * and then verified; the result carries a per-identity {@code results} array. The batch succeeds
+ * ({@code success:true}) whenever it could execute — individual {@code already_gone}/{@code pid_reused}/
+ * {@code permission_denied} outcomes live in {@code results}; {@code success:false} only when it could not
+ * connect at all ({@code NO_CONNECTION_CONFIGURED} / {@code DB_UNREACHABLE}). Works on RDS/Aurora (pure SQL).
  */
 public final class DbTerminateTool implements Tool {
 
@@ -75,25 +87,169 @@ public final class DbTerminateTool implements Tool {
 
     @Override
     public String render(final Map<String, Object> input) {
-        final Map<?, ?> identity = input.get("identity") instanceof Map<?, ?> m ? m : Map.of();
-        final boolean verifyOnly = DbTools.boolOf(input.get("verifyOnly"));
-        return (verifyOnly ? "verify" : "pg_terminate_backend") + " pid=" + DbTools.str(identity.get("pid")) + " backend_start=" +
-                DbTools.str(identity.get("backendStart")) + " on " + DbTools.str(input.get("dbIdentifier"));
+        final List<Map<?, ?>> ids = identities(input.get("identity"));
+        final String verb = DbTools.boolOf(input.get("verifyOnly")) ? "verify" : "pg_terminate_backend";
+        final String on = " on " + DbTools.str(input.get("dbIdentifier"));
+        if (ids.size() == 1) {
+            final Map<?, ?> id = ids.get(0);
+            return verb + " pid=" + DbTools.str(id.get("pid")) + " backend_start=" + DbTools.str(id.get("backendStart")) + on;
+        }
+        return verb + " " + ids.size() + " backend(s)" + on;
     }
 
     @Override
     public ToolResult execute(final Map<String, Object> input) {
-        final Map<?, ?> identity = input.get("identity") instanceof Map<?, ?> m ? m : Map.of();
+        final String dbIdentifier = DbTools.str(input.get("dbIdentifier"));
+        final String region = DbTools.str(input.get("region"));
+        final boolean verifyOnly = DbTools.boolOf(input.get("verifyOnly"));
+        final List<Map<?, ?>> ids = identities(input.get("identity"));
+        if (ids.isEmpty()) {
+            return DbTools.error("TERMINATE_FAILED", "identity is required — a {pid, backendStart} object or an array of them");
+        }
+        try {
+            if (ids.size() == 1) {
+                try (DbGateway gateway = provider.open(dbIdentifier, region)) {
+                    return batch(List.of(killOne(gateway, ids.get(0), verifyOnly)));
+                }
+            }
+            try (DbGateway probe = provider.open(dbIdentifier, region)) {
+                probe.serverTime(); // validate connectivity once — batch-fatal if it throws
+            }
+            return batch(runConcurrently(dbIdentifier, region, ids, verifyOnly));
+        } catch (DbAccessException e) {
+            return DbTools.error(e.code(), e.getMessage()); // could not execute at all → success:false
+        }
+    }
+
+    /** {@code identity} as a list of 1..N — a single object becomes a one-element batch. */
+    private static List<Map<?, ?>> identities(final Object raw) {
+        final List<Map<?, ?>> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (final Object o : list) {
+                if (o instanceof Map<?, ?> m) {
+                    out.add(m);
+                }
+            }
+        } else if (raw instanceof Map<?, ?> m) {
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Fire the kills on a small bounded pool (each worker its own connection), then collect every outcome. */
+    private List<Map<String, Object>> runConcurrently(final String dbIdentifier, final String region, final List<Map<?, ?>> ids,
+            final boolean verifyOnly) {
+        final ExecutorService pool = Executors.newFixedThreadPool(Math.min(maxConcurrency(), ids.size()), r -> {
+            final Thread t = new Thread(r, "oak-db-terminate");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            final List<Future<Map<String, Object>>> futures = new ArrayList<>();
+            for (final Map<?, ?> id : ids) {
+                futures.add(pool.submit(() -> killOneSafely(dbIdentifier, region, id, verifyOnly)));
+            }
+            final List<Map<String, Object>> results = new ArrayList<>();
+            for (int i = 0; i < futures.size(); i++) {
+                results.add(await(futures.get(i), ids.get(i)));
+            }
+            return results;
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    private Map<String, Object> killOneSafely(final String dbIdentifier, final String region, final Map<?, ?> id,
+            final boolean verifyOnly) {
+        try (DbGateway gateway = provider.open(dbIdentifier, region)) {
+            return killOne(gateway, id, verifyOnly);
+        } catch (DbAccessException e) {
+            return perIdError(id, mapCode(e.code()), e.getMessage());
+        }
+    }
+
+    private static Map<String, Object> await(final Future<Map<String, Object>> future, final Map<?, ?> id) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return perIdError(id, "error", "interrupted");
+        } catch (ExecutionException e) {
+            return perIdError(id, "error", String.valueOf(e.getCause()));
+        }
+    }
+
+    /** Terminate (or verify) one identity on an open gateway, mapped to a per-id result. */
+    private static Map<String, Object> killOne(final DbGateway gateway, final Map<?, ?> identity, final boolean verifyOnly) {
         final int pid = DbTools.intOf(identity.get("pid"), -1);
         final String backendStart = DbTools.str(identity.get("backendStart"));
-        final boolean verifyOnly = DbTools.boolOf(input.get("verifyOnly"));
         if (pid < 0 || backendStart == null) {
-            return DbTools.error("TERMINATE_FAILED", "identity.pid and identity.backendStart are required");
+            return perIdError(identity, "error", "identity.pid and identity.backendStart are required");
         }
-        try (DbGateway gateway = provider.open(DbTools.str(input.get("dbIdentifier")), DbTools.str(input.get("region")))) {
-            return decide(gateway, pid, backendStart, verifyOnly);
+        try {
+            final ToolResult r = decide(gateway, pid, backendStart, verifyOnly);
+            final Map<String, Object> out = new LinkedHashMap<>();
+            out.put("pid", pid);
+            out.put("backendStart", backendStart);
+            if (r.success()) {
+                out.put("status", statusOf(DbTools.str(r.data().get("outcome")), DbTools.str(r.data().get("reason"))));
+                out.put("observedBackendStart", r.data().get("observedBackendStart"));
+            } else {
+                out.put("status", "error");
+                out.put("message", DbTools.str(r.data().get("errorMessage")));
+            }
+            return out;
         } catch (DbAccessException e) {
-            return DbTools.error(e.code(), e.getMessage());
+            return perIdError(identity, mapCode(e.code()), e.getMessage());
+        }
+    }
+
+    private static Map<String, Object> perIdError(final Map<?, ?> identity, final String status, final String message) {
+        final Map<String, Object> out = new LinkedHashMap<>();
+        out.put("pid", DbTools.intOf(identity.get("pid"), -1));
+        out.put("backendStart", DbTools.str(identity.get("backendStart")));
+        out.put("status", status);
+        out.put("message", message);
+        return out;
+    }
+
+    private static String mapCode(final String code) {
+        return "PERMISSION_DENIED".equals(code) ? "permission_denied" : "error";
+    }
+
+    /** Map the single-kill {@code decide} outcome to the batch per-id status vocabulary. */
+    private static String statusOf(final String outcome, final String reason) {
+        if ("terminated".equals(outcome)) {
+            return "terminated";
+        }
+        if ("matched".equals(outcome)) {
+            return "matched";
+        }
+        if ("already_gone".equals(outcome)) {
+            return "pid_reused".equals(reason) ? "pid_reused" : "already_gone";
+        }
+        return "error";
+    }
+
+    /** Wrap the per-id results with a small summary. Always a success envelope — the tool executed. */
+    private static ToolResult batch(final List<Map<String, Object>> results) {
+        final long terminated = results.stream().filter(r -> "terminated".equals(r.get("status"))).count();
+        final Map<String, Object> output = new LinkedHashMap<>();
+        output.put("requested", results.size());
+        output.put("terminated", (int) terminated);
+        output.put("results", results);
+        return DbTools.ok(output);
+    }
+
+    private static int maxConcurrency() {
+        final String env = System.getenv("OAK_DB_TERMINATE_MAX_CONCURRENCY");
+        if (env == null || env.isBlank()) {
+            return 3;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(env.trim()));
+        } catch (NumberFormatException e) {
+            return 3;
         }
     }
 
