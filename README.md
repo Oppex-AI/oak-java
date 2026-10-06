@@ -196,6 +196,9 @@ For local development no publish is needed — `mvn install` puts it in `~/.m2`.
 
 ## Contributing
 
+New to the codebase? [docs/DEVELOPING.md](docs/DEVELOPING.md) is the developer quickstart — prerequisites,
+build, run, tests, and project layout.
+
 Contributions go through fork → branch → PR; you don't need write access. Start with
 [CONTRIBUTING.md](CONTRIBUTING.md) for the build, testing expectations, and how to add a tool.
 How the project is run and reviewed — roles, code ownership, and the tool-contract rules — is in

@@ -25,6 +25,9 @@ fork  →  feature branch  →  implement  →  run tests locally  →  open PR
 
 ## Supported Java and build
 
+> First time in the codebase? [docs/DEVELOPING.md](docs/DEVELOPING.md) is the quickstart —
+> prerequisites, clone, build, run, test, and project layout.
+
 - **Java 17.** The `oak-tools` core must compile and run on a customer's JVM, so 17 is the
   floor and we don't use newer language features.
 - Build and test everything:
