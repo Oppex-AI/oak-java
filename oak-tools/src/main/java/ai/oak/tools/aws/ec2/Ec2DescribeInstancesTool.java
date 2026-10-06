@@ -41,7 +41,7 @@ public final class Ec2DescribeInstancesTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("instanceIds", "filters", "region");
+        return List.of("instanceIds", "filters");
     }
 
     @Override

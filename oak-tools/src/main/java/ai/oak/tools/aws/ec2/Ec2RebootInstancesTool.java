@@ -41,7 +41,7 @@ public final class Ec2RebootInstancesTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("instanceIds", "region");
+        return List.of("instanceIds");
     }
 
     @Override

@@ -41,7 +41,7 @@ public final class RdsCreateDbSnapshotTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("dbInstanceIdentifier", "dbSnapshotIdentifier", "region");
+        return List.of("dbInstanceIdentifier", "dbSnapshotIdentifier");
     }
 
     @Override

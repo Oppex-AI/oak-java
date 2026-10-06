@@ -41,7 +41,7 @@ public final class ElastiCacheDescribeEventsTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("sourceIdentifier", "sourceType", "region");
+        return List.of("sourceIdentifier", "sourceType");
     }
 
     @Override

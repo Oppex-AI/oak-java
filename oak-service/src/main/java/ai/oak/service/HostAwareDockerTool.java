@@ -73,7 +73,7 @@ public final class HostAwareDockerTool implements Tool {
 
     @Override
     public List<String> inputKeys() {
-        final List<String> keys = new ArrayList<>(List.of("container", "instanceId", "region"));
+        final List<String> keys = new ArrayList<>(List.of("container", "instanceId"));
         if (hasTail) {
             keys.add("tail");
         }

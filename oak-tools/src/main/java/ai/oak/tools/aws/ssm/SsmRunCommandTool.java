@@ -76,7 +76,7 @@ public final class SsmRunCommandTool implements Tool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("instanceIds", "commands", "region");
+        return List.of("instanceIds", "commands");
     }
 
     @Override

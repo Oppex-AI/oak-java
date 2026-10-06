@@ -41,7 +41,7 @@ public final class ElastiCacheDescribeReplicationGroupsTool extends CommandTool 
 
     @Override
     public List<String> inputKeys() {
-        return List.of("replicationGroupId", "region");
+        return List.of("replicationGroupId");
     }
 
     @Override

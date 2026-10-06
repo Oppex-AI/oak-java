@@ -41,7 +41,7 @@ public final class ElastiCacheRebootCacheClusterTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("cacheClusterId", "cacheNodeIdsToReboot", "region");
+        return List.of("cacheClusterId", "cacheNodeIdsToReboot");
     }
 
     @Override

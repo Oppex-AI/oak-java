@@ -41,7 +41,7 @@ public final class CloudWatchLogsFilterTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("logGroupName", "filterPattern", "startTime", "region");
+        return List.of("logGroupName", "filterPattern", "startTime");
     }
 
     @Override

@@ -55,7 +55,7 @@ public final class DbListActivityTool implements Tool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("dbIdentifier", "region", "minDurationSeconds", "limit", "includeBlockers");
+        return List.of("dbIdentifier", "minDurationSeconds", "limit", "includeBlockers");
     }
 
     @Override

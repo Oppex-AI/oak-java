@@ -41,7 +41,7 @@ public final class ElastiCacheDescribeCacheClustersTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("cacheClusterId", "showCacheNodeInfo", "region");
+        return List.of("cacheClusterId", "showCacheNodeInfo");
     }
 
     @Override

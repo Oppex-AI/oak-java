@@ -69,7 +69,7 @@ class HostAwareDockerToolTest {
                 ssm, ENV);
         logs.execute(Map.of("container", "svc", "instanceId", "i-1", "tail", "100"));
         assertEquals("docker logs --tail 100 'svc'", ssm.command);
-        assertEquals(List.of("container", "instanceId", "region", "tail"), logs.inputKeys());
+        assertEquals(List.of("container", "instanceId", "tail"), logs.inputKeys());
         assertEquals(ToolPermission.READ, logs.permission());
     }
 
@@ -79,7 +79,7 @@ class HostAwareDockerToolTest {
                 new CapturingSsm(), ENV);
         assertEquals("docker restart opx (on i-1 via SSM)", tool.render(Map.of("container", "opx", "instanceId", "i-1")));
         assertEquals("docker restart <container>", tool.render(Map.of()));
-        assertEquals(List.of("container", "instanceId", "region"), tool.inputKeys());
+        assertEquals(List.of("container", "instanceId"), tool.inputKeys());
     }
 
     @Test

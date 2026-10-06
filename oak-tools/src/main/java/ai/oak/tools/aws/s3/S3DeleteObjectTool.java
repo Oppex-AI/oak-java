@@ -41,7 +41,7 @@ public final class S3DeleteObjectTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("bucket", "key", "region");
+        return List.of("bucket", "key");
     }
 
     @Override

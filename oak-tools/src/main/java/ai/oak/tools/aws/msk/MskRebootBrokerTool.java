@@ -41,7 +41,7 @@ public final class MskRebootBrokerTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("clusterArn", "brokerIds", "region");
+        return List.of("clusterArn", "brokerIds");
     }
 
     @Override

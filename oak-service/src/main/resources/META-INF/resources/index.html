@@ -61,6 +61,13 @@
     th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
     th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     tr:last-child td { border-bottom: none; }
+    /* Discovery popup: a scrollable table with a static (sticky) header. */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; padding: 24px; }
+    .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(960px, 100%); max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+    .modal-body { overflow: auto; }
+    .modal-body table { border: 0; border-radius: 0; }
+    .modal-body thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
     .st { font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
     .st-SUCCESS, .perm-READ { color: var(--ok); background: var(--ok-bg); }
     .st-FAILED, .perm-DESTRUCTIVE { color: var(--err); background: var(--err-bg); }
@@ -190,7 +197,9 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         <div class="card">
           <div id="dbconns"><div class="empty">Loading…</div></div>
           <div class="kv" style="margin-top:12px">
-            <label>dbIdentifier</label><input id="db_id" placeholder="orders-db (RDS instance id or logical name)">
+            <label>Discovered DB</label>
+            <select id="db_pick"><option value="">— pick a discovered database (or Other) —</option></select>
+            <label>dbIdentifier</label><input id="db_id" placeholder="pick above, or type an RDS id / logical name">
             <label>DB username</label><input id="db_user" placeholder="oak_runner">
             <label>Database</label><input id="db_name" placeholder="appdb">
             <label>Auth</label><select id="db_auth"><option value="IAM">RDS IAM token (no password)</option><option value="PASSWORD">Password</option></select>
@@ -203,6 +212,17 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Discovery popup: static header (title + sticky column headers) over a scrollable table body. -->
+  <div id="disc-modal" class="modal-overlay" onclick="if (event.target === this) closeDisc()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span id="disc-modal-title" class="nm"></span>
+        <button class="btn ghost" onclick="closeDisc()">Close</button>
+      </div>
+      <div class="modal-body" id="disc-modal-body"></div>
+    </div>
   </div>
 
   <script>
@@ -268,83 +288,93 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         loadDiscovery();
       } catch (e) { $("dash-sub").textContent = "Could not reach the executor: " + e.message; }
     }
+    // instanceId -> { host, docker:[containers], procs:[host processes] }, populated as reports render,
+    // so a row's buttons can open that instance's containers/processes in the popup.
+    let DISC = {};
     async function loadDiscovery() {
       try {
         const reports = await (await fetch("api/discovery/last", { cache: "no-store" })).json();
+        DISC = {};
         $("discovery").innerHTML = (reports && reports.length)
           ? reports.map(discoveryReport).join("")
           : '<div class="empty">Nothing reported yet. OAK posts a snapshot once connected and an AWS role is linked.</div>';
       } catch (e) { $("discovery").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
     }
-    // Grouped BY HOST: each EC2 instance with the services running on it (its containers, then its host
-    // processes) nested underneath — so "what runs where" reads directly. RDS and anything whose host isn't
-    // in the snapshot are shown as standalone tables.
+    // One card per platform: a table of discovered EC2 instances (each row links to its docker containers
+    // and app/host processes via a popup) and a table of discovered databases.
     function discoveryReport(r) {
       const res = r.resources || [];
       const hosts = res.filter(x => x.type === "EC2_INSTANCE");
       const containers = res.filter(x => x.type === "DOCKER_CONTAINER");
       const processes = res.filter(x => x.type === "HOST_PROCESS");
       const dbs = res.filter(x => x.type === "RDS_INSTANCE");
-      const hostIds = new Set(hosts.map(h => h.id));
-      const known = ["EC2_INSTANCE", "DOCKER_CONTAINER", "HOST_PROCESS", "RDS_INSTANCE"];
 
-      const hostBlocks = hosts.map(h => hostSection(h,
-        containers.filter(c => c.hostInstanceId === h.id),
-        processes.filter(p => p.hostInstanceId === h.id))).join("");
+      hosts.forEach(h => {
+        DISC[h.id] = { host: h, docker: containers.filter(c => c.hostInstanceId === h.id),
+          procs: processes.filter(p => p.hostInstanceId === h.id) };
+      });
 
-      const standalone = [];
-      if (dbs.length) standalone.push(labelledTable("Databases (RDS)", dbs, []));
-      const orphanC = containers.filter(c => !hostIds.has(c.hostInstanceId));
-      const orphanP = processes.filter(p => !hostIds.has(p.hostInstanceId));
-      if (orphanC.length) standalone.push(labelledTable("Containers (host not in snapshot)", orphanC, []));
-      if (orphanP.length) standalone.push(labelledTable("Processes (host not in snapshot)", orphanP, []));
-      const others = {};
-      res.filter(x => !known.includes(x.type)).forEach(x => (others[x.type] = others[x.type] || []).push(x));
-      Object.keys(others).sort().forEach(t => standalone.push(labelledTable(t, others[t], [])));
-
-      const body = hostBlocks + standalone.join("");
+      const body = instancesTable(hosts) + dbTable(dbs);
       return `<div class="card">
         <div class="plhead"><span class="nm">${esc(r.platform)} <span class="cnt">· ${r.resourceCount} resource(s)</span></span>
           <span class="badge ${r.changed ? "b-ok" : "b-idle"}">${r.changed ? "changed" : "unchanged"}</span></div>
         <div class="sub" style="margin:0 0 8px">Reported ${fmt(r.at)}</div>
         ${body || '<div class="empty">No resources found.</div>'}</div>`;
     }
-    function hostSection(host, containers, processes) {
-      const name = (host.tags && host.tags.Name) ? host.tags.Name + " — " : "";
-      const meta = ["state", "instanceType", "availabilityZone", "privateIp"].map(k => host[k]).filter(Boolean).join(" · ");
-      const svc = [];
-      if (containers.length) svc.push(labelledTable("Containers", containers, ["hostInstanceId", "region"]));
-      if (processes.length) svc.push(labelledTable("Processes", processes, ["hostInstanceId", "region"]));
-      const empty = svc.length ? ""
-        : '<div class="sub" style="margin:2px 0 4px">No containers or processes reported — host not SSM-managed, the linked role lacks ssm:SendCommand, or nothing is running (see the OAK log for the reason).</div>';
-      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-        <div class="nm mono" style="font-size:13px">🖥 ${esc(host.id)} <span class="cnt" style="font-family:inherit">${esc(name)}${esc(meta)}</span></div>
-        ${svc.join("") || empty}</div>`;
-    }
-    // Columns are derived from the facts present (minus omitted keys), so each type renders its own detail
-    // without a hardcoded schema. Map facts (tags, labels) render as chips.
-    function labelledTable(label, items, omit) {
-      const skip = new Set(["type", "id", ...(omit || [])]);
-      const scalar = [], maps = [], seen = {};
-      items.forEach(x => Object.keys(x).forEach(k => {
-        if (skip.has(k) || seen[k]) return;
-        seen[k] = 1;
-        (x[k] && typeof x[k] === "object" ? maps : scalar).push(k);
-      }));
-      const headers = ["id", ...scalar, ...maps].map(h => `<th>${esc(h)}</th>`).join("");
-      const rows = items.map(x => {
-        const cells = [`<td class="mono">${esc(x.id)}</td>`];
-        scalar.forEach(k => cells.push(`<td>${esc(x[k] ?? "—")}</td>`));
-        maps.forEach(k => cells.push(`<td>${mapChips(x[k])}</td>`));
-        return `<tr>${cells.join("")}</tr>`;
+    function instancesTable(hosts) {
+      if (!hosts.length) return "";
+      const rows = hosts.map(h => {
+        const d = DISC[h.id] || { docker: [], procs: [] };
+        const name = (h.tags && h.tags.Name) || "";
+        return `<tr>
+          <td class="mono">${esc(h.id)}</td><td>${esc(name || "—")}</td><td>${esc(h.state ?? "—")}</td>
+          <td>${esc(h.instanceType ?? "—")}</td><td>${esc(h.availabilityZone ?? "—")}</td>
+          <td class="mono">${esc(h.privateIp ?? "—")}</td>
+          <td>${discBtn(h.id, "docker", "🐳 Docker", d.docker.length)} ${discBtn(h.id, "procs", "App", d.procs.length)}</td></tr>`;
       }).join("");
-      return `<div class="lbl">${esc(label)} <span class="cnt">(${items.length})</span></div>
-        <table style="margin-bottom:8px;display:block;overflow-x:auto"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+      return `<div class="lbl">Instances <span class="cnt">(${hosts.length})</span></div>
+        <table style="margin-bottom:14px;display:block;overflow-x:auto"><thead><tr>
+          <th>Instance</th><th>Name</th><th>State</th><th>Type</th><th>AZ</th><th>Private IP</th><th>Processes</th>
+        </tr></thead><tbody>${rows}</tbody></table>`;
     }
-    function mapChips(m) {
-      const e = Object.entries(m || {});
-      return e.length ? e.map(([k, v]) => `<span class="chip">${esc(k)}=${esc(v)}</span>`).join(" ") : "—";
+    function discBtn(id, kind, label, n) {
+      const dis = n ? "" : "disabled style=\"opacity:.45;cursor:default\"";
+      return `<button class="btn ghost" ${dis} onclick="openDisc('${esc(id)}','${kind}')">${label} (${n})</button>`;
     }
+    function dbTable(dbs) {
+      if (!dbs.length) return "";
+      const rows = dbs.map(x => `<tr>
+        <td class="mono">${esc(x.id)}</td><td>${esc(x.engine ?? "—")}${x.engineVersion ? " " + esc(x.engineVersion) : ""}</td>
+        <td>${esc(x.dbInstanceClass ?? "—")}</td><td class="mono">${esc(x.endpoint ?? "—")}</td><td>${esc(x.port ?? "—")}</td>
+        <td>${esc(x.state ?? "—")}</td><td>${esc(x.availabilityZone ?? "—")}</td><td>${x.multiAz ? "yes" : "no"}</td></tr>`).join("");
+      return `<div class="lbl">Databases <span class="cnt">(${dbs.length})</span></div>
+        <table style="display:block;overflow-x:auto"><thead><tr>
+          <th>Identifier</th><th>Engine</th><th>Class</th><th>Endpoint</th><th>Port</th><th>State</th><th>AZ</th><th>Multi-AZ</th>
+        </tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    // Popup: a scrollable table (sticky header) of one instance's docker containers or app processes.
+    function openDisc(id, kind) {
+      const d = DISC[id] || { host: {}, docker: [], procs: [] };
+      const nm = (d.host && d.host.tags && d.host.tags.Name) ? " (" + d.host.tags.Name + ")" : "";
+      let head, rows, what;
+      if (kind === "docker") {
+        what = "Docker containers";
+        head = ["Container", "Name", "Image", "State", "Status", "Ports"];
+        rows = d.docker.map(c => [c.id, c.name, c.image, c.state, c.status, c.ports]);
+      } else {
+        what = "App processes";
+        head = ["PID", "User", "PPID", "Command"];
+        rows = d.procs.map(p => [p.pid, p.user, p.ppid, p.command]);
+      }
+      const ths = head.map(h => `<th>${esc(h)}</th>`).join("");
+      const trs = rows.length
+        ? rows.map(r => `<tr>${r.map((v, i) => `<td class="${i === 0 ? "mono" : ""}">${esc(v ?? "—")}</td>`).join("")}</tr>`).join("")
+        : `<tr><td colspan="${head.length}" class="empty">None reported.</td></tr>`;
+      $("disc-modal-title").textContent = `${what} on ${id}${nm} — ${rows.length}`;
+      $("disc-modal-body").innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+      $("disc-modal").style.display = "flex";
+    }
+    function closeDisc() { $("disc-modal").style.display = "none"; }
     function kv(obj) { return Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`).join(""); }
 
     // ---- tools ----
@@ -470,6 +500,39 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
           <tbody>${ids.map(id => dbRow(id, conns[id])).join("")}</tbody></table>`
           : '<div class="empty">No databases configured. Add one below.</div>';
       } catch (e) { $("dbconns").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+      loadDiscoveredDbs();
+    }
+
+    // Populate the dbIdentifier picker from what discovery last reported — the RDS instance ids here are the
+    // exact dbIdentifiers the platform sends, so choosing one avoids a typo'd mismatch. "Other" = free type.
+    async function loadDiscoveredDbs() {
+      const sel = $("db_pick");
+      if (!sel) return;
+      const rds = [];
+      try {
+        const reports = await (await fetch("api/discovery/last", { cache: "no-store" })).json();
+        const seen = new Set();
+        (reports || []).forEach(r => (r.resources || []).forEach(res => {
+          if (res.type === "RDS_INSTANCE" && !seen.has(res.id)) { seen.add(res.id); rds.push(res); }
+        }));
+      } catch (e) { /* leave manual-only */ }
+      rds.sort((a, b) => a.id.localeCompare(b.id));
+      const opts = rds.map(r => {
+        const f = r.facts || {};
+        const label = esc(r.id) + (f.endpoint ? " — " + esc(f.endpoint) : "");
+        return `<option value="${esc(r.id)}" data-port="${esc(f.port || "")}" data-region="${esc(f.region || "")}">${label}</option>`;
+      }).join("");
+      sel.innerHTML = `<option value="">${rds.length ? "— pick a discovered database —" : "— none discovered yet; use Other —"}</option>`
+        + opts + `<option value="__other__">Other / not discovered (enter manually)</option>`;
+      sel.onchange = () => {
+        const o = sel.selectedOptions[0];
+        if (!o || !o.value) return;
+        if (o.value === "__other__") { $("db_id").value = ""; $("db_id").focus(); return; }
+        $("db_id").value = o.value;     // matches the platform's dbIdentifier exactly
+        $("db_host").value = "";        // blank → OAK auto-resolves the RDS endpoint
+        if (o.dataset.port) $("db_port").value = o.dataset.port;
+        if (o.dataset.region) $("db_region").value = o.dataset.region;
+      };
     }
     function dbRow(id, c) {
       const auth = c.authMode === "PASSWORD" ? ("password" + (c.passwordSet ? " ✓" : " (not set)")) : "IAM";
@@ -502,7 +565,7 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       AWS: [
         { env: "AWS_ROLE_ARN", label: "Role ARN", ph: "arn:aws:iam::<account>:role/oak-runner" },
         { env: "AWS_REGION", label: "Region", ph: "us-west-2" },
-        { env: "AWS_PROFILE", label: "CLI profile (source identity)", ph: "e.g. pranit-dev-admin — local profile whose creds assume the role; blank = default/instance role" }
+        { env: "AWS_PROFILE", label: "CLI profile (source identity)", ph: "named AWS/SSO profile whose creds assume the role; blank = default / instance role" }
       ],
       Docker: [{ env: "DOCKER_HOST", label: "Docker host", ph: "unix:///var/run/docker.sock or tcp://host:2375" }]
     };
@@ -514,8 +577,27 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       try { data = await (await fetch("api/tool-settings", { cache: "no-store" })).json(); } catch (e) { /* show empty */ }
       OAK_IDENTITY = data.oakIdentity || {};
       const groups = data.groups || {};
-      $("toolsettings").innerHTML = Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, groups[g] || {})).join("");
+      $("toolsettings").innerHTML = regionNote(data)
+        + Object.keys(TOOL_FIELDS).map(g => toolGroupForm(g, groups[g] || {})).join("");
       Object.keys(TOOL_FIELDS).forEach(g => { $("tsBtn_" + g).onclick = () => saveToolSettings(g); });
+    }
+
+    // OAK is a region-scoped service: one instance serves exactly one region. We show which, and where it
+    // came from, so the operator can confirm it before it's reported to the platform at registration.
+    function regionNote(data) {
+      const r = data.region, src = data.regionSource;
+      const from = src === "setting" ? "from the Region field below"
+        : src === "host-env" ? "from the host environment (AWS_REGION)"
+        : src === "host-metadata" ? "from the host (EC2 instance metadata)"
+        : "not set";
+      const body = r
+        ? `This OAK instance is connected in <b>one region</b>: <span class="mono">${esc(r)}</span> (${from}).
+           It is reported to the platform at registration, and every tool runs in this region. To operate in
+           a different region, set the AWS <b>Region</b> below (it overrides the host default).`
+        : `This OAK instance operates in a <b>single region</b>, but none is set yet — set the AWS
+           <b>Region</b> below, or launch the host with <span class="mono">AWS_REGION</span>. Until then AWS
+           tools and discovery can't run.`;
+      return `<div class="card"><h2>Region</h2><div class="sub">${body}</div></div>`;
     }
 
     const AWS_POLICY = JSON.stringify({

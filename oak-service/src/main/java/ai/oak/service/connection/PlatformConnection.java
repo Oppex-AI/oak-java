@@ -16,6 +16,7 @@
 package ai.oak.service.connection;
 
 import ai.oak.service.AgentStatus;
+import ai.oak.service.ToolExecutor;
 import ai.oak.service.client.CapabilityDeclaration;
 import ai.oak.service.client.DiscoverySnapshot;
 import ai.oak.service.client.DiscoverySnapshotResponse;
@@ -72,7 +73,7 @@ public final class PlatformConnection {
      */
     public record Context(ConnectionStore store, ToolRegistry registry, ExecutorService workers, AgentStatus status,
             ServiceId service, Function<String, Map<String, String>> env, java.util.function.Predicate<String> active,
-            java.util.function.Supplier<DiscoverySnapshot> discovery) {
+            java.util.function.Supplier<DiscoverySnapshot> discovery, java.util.function.Supplier<String> region) {
     }
 
     /** How this service names itself at registration. */
@@ -272,9 +273,12 @@ public final class PlatformConnection {
 
     private void registerAndPoll() {
         final List<CapabilityDeclaration> declared = ctx.registry().all().stream().filter(t -> ctx.active().test(t.capability()))
-                .map(t -> new CapabilityDeclaration(t.capability(), t.permission(), t.description(), t.inputKeys())).toList();
+                .map(t -> new CapabilityDeclaration(t.capability(), t.permission(), t.description(), t.inputKeys(),
+                        t.approvalCandidateSource()))
+                .toList();
         try {
-            client.register(new ToolServiceRegistrationRequest(ctx.service().name(), ctx.service().version(), declared));
+            client.register(
+                    new ToolServiceRegistrationRequest(ctx.service().name(), ctx.service().version(), declared, oakRegion()));
             ctx.status().connected(name, state.baseUrl(), state.clientId(), state.connectionId(), true);
             LOG.info("[{}] registered: {} capabilities declared", name, declared.size());
             pollTask = control.scheduleWithFixedDelay(this::pollOnce, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
@@ -368,7 +372,8 @@ public final class PlatformConnection {
                 return new Outcome("FAILED", note);
             }
             final Map<String, String> env = ctx.env() == null ? Map.of() : ctx.env().apply(step.capability());
-            return report(step, ctx.registry().execute(step.capability(), step.input(), env).orElse(null));
+            final Map<String, Object> input = ToolExecutor.withRegion(step.input(), oakRegion());
+            return report(step, ctx.registry().execute(step.capability(), input, env).orElse(null));
         } catch (UnauthorizedException e) {
             control.execute(() -> {
                 cancelPolling();
@@ -401,6 +406,11 @@ public final class PlatformConnection {
     }
 
     // --- helpers -----------------------------------------------------------------------------------
+
+    /** OAK's single operating region (connection context), or null when it can't be determined. */
+    private String oakRegion() {
+        return ctx.region() == null ? null : ctx.region().get();
+    }
 
     private record Outcome(String label, String note) {
     }

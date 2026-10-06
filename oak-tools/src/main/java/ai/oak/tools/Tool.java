@@ -74,4 +74,14 @@ public interface Tool {
     default ToolResult execute(Map<String, Object> input, Map<String, String> env) {
         return execute(input);
     }
+
+    /**
+     * For a select-then-approve DESTRUCTIVE tool, where the single target the operator approves comes
+     * from and what to inject once chosen (see {@link ApprovalCandidateSource}). The default is
+     * {@code null}: non-destructive tools, and destructive tools whose target is already fully in their
+     * input ("approve-and-run"), advertise nothing.
+     */
+    default ApprovalCandidateSource approvalCandidateSource() {
+        return null;
+    }
 }

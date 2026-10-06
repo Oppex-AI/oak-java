@@ -50,6 +50,9 @@ public class ToolCatalog {
     AwsCredentials awsCredentials;
 
     @Inject
+    RegionProvider regions;
+
+    @Inject
     SsmRunner ssmRunner;
 
     @Inject
@@ -120,7 +123,7 @@ public class ToolCatalog {
     /** Assumed-role AWS environment for the SSM calls a host-aware docker tool makes. */
     private Map<String, String> awsEnv() {
         final Map<String, String> raw = toolSettings.envFor("AWS");
-        return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"),
+        return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), regions.region(),
                 raw.get("AWS_PROFILE"));
     }
 

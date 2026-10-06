@@ -18,6 +18,7 @@ package ai.oak.service;
 import ai.oak.tools.ToolResult;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -39,15 +40,18 @@ public class ToolExecutor {
     @Inject
     AwsCredentials awsCredentials;
 
+    @Inject
+    RegionProvider regions;
+
     /**
      * The environment a tool of this capability runs with. AWS assumes the linked role (temporary creds
-     * as env); every other group gets its configured settings as-is.
+     * as env, in OAK's single region); every other group gets its configured settings as-is.
      */
     public Map<String, String> envForCapability(final String capability) {
         final String group = ToolCatalog.groupOf(capability);
         final Map<String, String> raw = toolSettings.envFor(group);
         if ("AWS".equals(group)) {
-            return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), raw.get("AWS_REGION"),
+            return awsCredentials.assume(raw.get("AWS_ROLE_ARN"), raw.get("OAK_EXTERNAL_ID"), regions.region(),
                     raw.get("AWS_PROFILE"));
         }
         return raw;
@@ -55,7 +59,21 @@ public class ToolExecutor {
 
     /** Resolve the capability's environment and execute it; empty only if the capability is unknown. */
     public Optional<ToolResult> run(final String capability, final Map<String, Object> input) {
-        final Map<String, Object> args = input == null ? Map.of() : input;
+        final Map<String, Object> args = withRegion(input, regions.region());
         return catalog.registry().execute(capability, args, envForCapability(capability));
+    }
+
+    /**
+     * Region is OAK's connection context, not a planner input (OPD-666). Inject OAK's single region into
+     * the step input — overriding anything that arrived — so a tool that takes {@code region} always acts
+     * in OAK's region. A null/blank region leaves the input untouched.
+     */
+    public static Map<String, Object> withRegion(final Map<String, Object> input, final String region) {
+        if (region == null || region.isBlank()) {
+            return input == null ? Map.of() : input;
+        }
+        final Map<String, Object> args = new LinkedHashMap<>(input == null ? Map.of() : input);
+        args.put("region", region);
+        return args;
     }
 }

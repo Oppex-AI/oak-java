@@ -46,6 +46,23 @@ public final class DockerPsTool extends CommandTool {
 
     @Override
     public Cli command(final Map<String, Object> input) {
-        return Cli.docker("ps").flag("--all", input.get("all")).opt("--filter", input.get("filter"));
+        return Cli.docker("ps").flag("--all", input.get("all")).opt("--filter", normalizeFilter(input.get("filter")));
+    }
+
+    /**
+     * Docker's {@code --filter} requires {@code name=value}. A bare value (no {@code =}) is never a valid
+     * filter, so treat it as a name filter — the common intent when a step passes just a container or
+     * service name. A real filter ({@code name=…}, {@code status=…}, {@code label=k=v}) already has an
+     * {@code =} and passes through untouched.
+     */
+    private static Object normalizeFilter(final Object filter) {
+        if (filter == null) {
+            return null;
+        }
+        final String value = filter.toString().trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        return value.contains("=") ? value : "name=" + value;
     }
 }

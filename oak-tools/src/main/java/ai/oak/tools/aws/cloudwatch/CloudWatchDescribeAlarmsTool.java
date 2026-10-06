@@ -41,7 +41,7 @@ public final class CloudWatchDescribeAlarmsTool extends CommandTool {
 
     @Override
     public List<String> inputKeys() {
-        return List.of("alarmNames", "stateValue", "region");
+        return List.of("alarmNames", "stateValue");
     }
 
     @Override
