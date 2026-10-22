@@ -42,6 +42,10 @@ import java.util.Map;
  * NOT contain the code-fix logic and holds no GitHub/model credentials — it only forwards the step input
  * as JSON and returns what the agent reports.
  *
+ * <p>When the step's {@code repoUrl} matches a repository OAK has already downloaded (see {@link CodeRepos}),
+ * OAK adds the local checkout path and commit to the forwarded payload, so the agent operates on what OAK
+ * fetched with the host's git rather than cloning again. The same repo context is echoed on the result.
+ *
  * <p>Permission is {@link ToolPermission#READ}: proposing a PR mutates nothing on customer infrastructure
  * — a human reviews and merges. Auto-registers as a {@code @ApplicationScoped} {@link Tool} bean (picked
  * up by {@code ToolCatalog}'s {@code Instance<Tool>}), which also auto-advertises it to the platform at
@@ -60,6 +64,9 @@ public class CodeIncidentFixTool implements Tool {
 
     @Inject
     OakConfig config;
+
+    @Inject
+    CodeRepos repos;
 
     private final String overrideBaseUrl;
     private final HttpClient http;
@@ -90,7 +97,8 @@ public class CodeIncidentFixTool implements Tool {
     @Override
     public String description() {
         return "Relay an incident to the local Code Agent, which proposes a fix as a pull request (a human reviews " +
-                "and merges). OAK only forwards the request; it holds no code-fix logic or credentials.";
+                "and merges). When OAK has already downloaded the target repo, it passes the local checkout so the " +
+                "agent skips cloning. OAK holds no code-fix logic or credentials.";
     }
 
     @Override
@@ -101,30 +109,83 @@ public class CodeIncidentFixTool implements Tool {
     @Override
     public String render(final Map<String, Object> input) {
         final Map<String, Object> in = input == null ? Map.of() : input;
-        return "POST " + baseUrl() + PATH + " incidentId=" + str(in.get("incidentId")) + " repo=" + str(in.get("repoUrl"));
+        final Object localPath = resolveRepo(in).get("repoLocalPath");
+        final String local = localPath == null ? "" : " local=" + localPath;
+        return "POST " + baseUrl() + PATH + " incidentId=" + str(in.get("incidentId")) + " repo=" + str(in.get("repoUrl")) +
+                local;
     }
 
     @Override
     public ToolResult execute(final Map<String, Object> input) {
         final String url = baseUrl() + PATH;
+        // Enrich the forwarded step with the local checkout OAK already downloaded for this repo, so the
+        // Code Agent works on that instead of cloning again. Empty when the repo isn't configured here.
+        final Map<String, Object> repoCtx = resolveRepo(input);
         try {
-            final String body = mapper.writeValueAsString(input == null ? Map.of() : input);
+            final Map<String, Object> payload = new LinkedHashMap<>();
+            if (input != null) {
+                payload.putAll(input);
+            }
+            payload.putAll(repoCtx);
+            final String body = mapper.writeValueAsString(payload);
             final HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(REQUEST_TIMEOUT)
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             final HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
-                return error("CODE_AGENT_HTTP_" + response.statusCode(),
-                        "code agent returned HTTP " + response.statusCode() + snippet(response.body()));
+                return withRepo(error("CODE_AGENT_HTTP_" + response.statusCode(),
+                        "code agent returned HTTP " + response.statusCode() + snippet(response.body())), repoCtx);
             }
             final String raw = response.body();
-            return toResult(raw == null || raw.isBlank() ? Map.of() : mapper.readValue(raw, MAP));
+            return withRepo(toResult(raw == null || raw.isBlank() ? Map.of() : mapper.readValue(raw, MAP)), repoCtx);
         } catch (IOException e) {
             // The Tool contract never throws for a failed call — a transport failure is a reportable outcome.
-            return error("CODE_AGENT_UNREACHABLE", "could not reach the code agent at " + url + ": " + e.getMessage());
+            return withRepo(error("CODE_AGENT_UNREACHABLE", "could not reach the code agent at " + url + ": " + e.getMessage()),
+                    repoCtx);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return error("CODE_AGENT_INTERRUPTED", "interrupted while waiting for the code agent");
+            return withRepo(error("CODE_AGENT_INTERRUPTED", "interrupted while waiting for the code agent"), repoCtx);
         }
+    }
+
+    /**
+     * The repo context OAK contributes to the step. When {@code repoUrl} matches a repository OAK has
+     * downloaded and marked ready, this carries the local checkout path (and commit) so the agent can skip
+     * its own clone. Empty when no repo store is wired or no {@code repoUrl} is present; {@code UNCONFIGURED}
+     * when the URL isn't one OAK was told to download.
+     */
+    private Map<String, Object> resolveRepo(final Map<String, Object> input) {
+        final Map<String, Object> ctx = new LinkedHashMap<>();
+        final Object repoUrl = input == null ? null : input.get("repoUrl");
+        if (repos == null || repoUrl == null || repoUrl.toString().isBlank()) {
+            return ctx;
+        }
+        final String slug = CodeRepos.slugFor(repoUrl.toString());
+        final CodeRepo repo = repos.get(slug).orElse(null);
+        if (repo == null) {
+            ctx.put("repoStatus", "UNCONFIGURED");
+            ctx.put("repoReady", false);
+            return ctx;
+        }
+        ctx.put("repoSlug", slug);
+        ctx.put("repoStatus", repo.status().name());
+        ctx.put("repoReady", repo.isReady());
+        if (repo.isReady()) {
+            ctx.put("repoLocalPath", repo.localPath());
+            if (repo.commit() != null && !repo.commit().isBlank()) {
+                ctx.put("repoCommit", repo.commit());
+            }
+        }
+        return ctx;
+    }
+
+    /** Merge the repo context into a result's data, so the incident record shows what OAK supplied. */
+    private static ToolResult withRepo(final ToolResult result, final Map<String, Object> repoCtx) {
+        if (repoCtx.isEmpty()) {
+            return result;
+        }
+        final Map<String, Object> merged = new LinkedHashMap<>(repoCtx);
+        merged.putAll(result.data());
+        return new ToolResult(result.exitCode(), result.stdout(), result.stderr(), result.timedOut(), merged);
     }
 
     /** Map the agent's {@code {outcome, prUrl, branch, commitSha, rationale, detail}} to a result; success = outcome != ERROR. */
