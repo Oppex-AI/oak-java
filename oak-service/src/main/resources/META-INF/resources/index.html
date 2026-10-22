@@ -210,6 +210,21 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
             <span></span><span><button class="btn" id="dbSaveBtn">Save database</button> <span id="dbMsg" class="sub"></span></span>
           </div>
         </div>
+
+        <h2 class="section">Code repository</h2>
+        <div class="sub" style="margin:-8px 0 12px">Point OAK at the repository the <b>Code Agent</b> should work on.
+          Saving a URL downloads the code onto this host; OAK confirms when it's <b>ready</b>. OAK stores
+          <b>no git credentials</b> — the download uses this host's own git (an SSH key or credential helper), the same
+          way the AWS and Docker tools use the host's CLIs. A private repo the host's git can't reach shows as
+          <i>failed</i>. The checkout lives under <span class="mono">&lt;data-dir&gt;/repos</span>.</div>
+        <div class="card">
+          <div id="coderepos"><div class="empty">Loading…</div></div>
+          <div class="kv" style="margin-top:12px">
+            <label for="repo_url">Repository URL</label><input id="repo_url" class="mono" placeholder="https://github.com/acme/widgets.git  or  git@github.com:acme/widgets.git">
+            <label for="repo_branch">Branch (optional)</label><input id="repo_branch" class="mono" placeholder="blank = repository default">
+            <span></span><span><button class="btn" id="repoSaveBtn">Add &amp; download</button> <span id="repoMsg" class="sub"></span></span>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -488,6 +503,7 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       } catch (e) { $("setinfo").innerHTML = '<dd class="empty">Could not load: ' + esc(e.message) + "</dd>"; }
       loadToolSettings();
       loadDbConnections();
+      loadCodeRepos();
     }
 
     // ---- database connections ----
@@ -558,6 +574,60 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         ["db_id", "db_user", "db_name", "db_pass", "db_host", "db_port", "db_region"].forEach(i => $(i).value = "");
         $("dbMsg").textContent = "Saved."; loadDbConnections();
       } catch (e) { $("dbMsg").textContent = "Save failed: " + e.message; }
+    }
+
+    // ---- code repository ----
+    // [cssClass, label] per download status. CLONING is a live state → the loader polls until it settles.
+    const REPO_STATUS = {
+      READY: ["b-ok", "ready ✓"], CLONING: ["b-warn", "downloading…"],
+      FAILED: ["b-err", "failed"], NONE: ["b-idle", "queued"]
+    };
+    let repoPoll = null;
+    async function loadCodeRepos() {
+      try {
+        const repos = await (await fetch("api/code-repos", { cache: "no-store" })).json();
+        const slugs = Object.keys(repos).sort();
+        $("coderepos").innerHTML = slugs.length ? `<table><thead><tr>
+          <th>Repository</th><th>Branch</th><th>Status</th><th>Commit</th><th>Detail</th><th></th></tr></thead>
+          <tbody>${slugs.map(s => repoRow(s, repos[s])).join("")}</tbody></table>`
+          : '<div class="empty">No repository configured. Add one below to download it.</div>';
+        // Keep polling while any download is in flight, then stop.
+        const downloading = slugs.some(s => repos[s].status === "CLONING");
+        if (downloading && !repoPoll) repoPoll = setInterval(loadCodeRepos, 2000);
+        if (!downloading && repoPoll) { clearInterval(repoPoll); repoPoll = null; }
+      } catch (e) { $("coderepos").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    function repoRow(slug, r) {
+      const [cls, label] = REPO_STATUS[r.status] || ["b-idle", (r.status || "").toLowerCase()];
+      const commit = r.commit ? esc(r.commit.slice(0, 10)) : "—";
+      const spin = r.status === "CLONING" ? "" : `<button class="btn ghost" onclick="refreshRepo('${esc(slug)}')">Re-download</button> `;
+      return `<tr><td class="mono" title="${esc(r.localPath || "")}">${esc(r.url)}</td><td>${esc(r.branch || "default")}</td>
+        <td><span class="badge ${cls}">${label}</span></td><td class="mono">${commit}</td>
+        <td class="sub">${esc(r.detail || "")}</td>
+        <td style="white-space:nowrap">${spin}<button class="btn ghost" onclick="deleteRepo('${esc(slug)}')">Remove</button></td></tr>`;
+    }
+    async function saveRepo() {
+      const url = $("repo_url").value.trim();
+      if (!url) { $("repoMsg").textContent = "Enter a repository URL."; return; }
+      $("repoMsg").textContent = "Starting download…";
+      try {
+        const d = await (await fetch("api/code-repos", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, branch: $("repo_branch").value.trim() || null }) })).json();
+        if (!d.ok) { $("repoMsg").textContent = d.error || "failed"; return; }
+        $("repo_url").value = ""; $("repo_branch").value = "";
+        $("repoMsg").textContent = "Downloading — OAK will confirm when the repo is ready.";
+        loadCodeRepos();
+      } catch (e) { $("repoMsg").textContent = "Save failed: " + e.message; }
+    }
+    async function refreshRepo(slug) {
+      await fetch("api/code-repos/refresh", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }) });
+      loadCodeRepos();
+    }
+    async function deleteRepo(slug) {
+      await fetch("api/code-repos/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }) });
+      loadCodeRepos();
     }
 
     // Editable fields per group; the store itself is generic. AWS also shows a read-only External ID.
@@ -727,6 +797,7 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
     function refreshActive() { show(views.find(v => $(v).classList.contains("active")) || "dashboard"); }
     $("refreshBtn").onclick = refreshActive;
     $("dbSaveBtn").onclick = saveDb;
+    $("repoSaveBtn").onclick = saveRepo;
     show(location.hash.slice(1) || "dashboard");
     // Gentle auto-refresh of the Dashboard every 5 minutes; use the Refresh button for an immediate update.
     setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 300000);
