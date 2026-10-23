@@ -225,6 +225,15 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
           <div id="agentStatus" class="sub" style="margin:10px 0 0"></div>
         </div>
         <div class="card">
+          <h2>Model backends</h2>
+          <div class="sub" style="margin:-4px 0 10px">The API key the agent uses to call the model.
+            <b>Stored by the Code Agent, not OAK</b> — OAK forwards it and never keeps or shows it back; you can
+            update it here at any time. If the agent is on another host, use an <span class="mono">https://</span>
+            base URL so the key isn't sent in the clear.</div>
+          <div id="modelcreds" class="kv"><div class="empty">Loading…</div></div>
+          <div id="credMsg" class="sub" style="margin:10px 0 0"></div>
+        </div>
+        <div class="card">
           <h2>Repositories</h2>
           <div class="sub" style="margin:-4px 0 10px">Add a repository and the agent pulls it; OAK confirms when it's
             <b>ready</b>. A repo the agent can't reach shows as <i>failed</i> — fix its access on the agent's side.</div>
@@ -514,6 +523,7 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       loadToolSettings();
       loadDbConnections();
       loadCodeAgent();
+      loadModelCreds();
       loadCodeRepos();
     }
 
@@ -607,8 +617,51 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         const d = await (await fetch("api/code-agent", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ baseUrl }) })).json();
         $("agentMsg").textContent = d.ok ? "Saved." : (d.error || "failed");
-        if (d.ok) { loadCodeAgent(); loadCodeRepos(); }
+        if (d.ok) { loadCodeAgent(); loadModelCreds(); loadCodeRepos(); }
       } catch (e) { $("agentMsg").textContent = "Save failed: " + e.message; }
+    }
+
+    // ---- model backends (keys live in the agent; OAK forwards write-only) ----
+    // Table-driven: add { key: "codex", label: "Codex API key", ph: "…" } here when the agent supports it.
+    const MODEL_BACKENDS = [{ key: "claude", label: "Claude API key", ph: "sk-ant-…" }];
+    async function loadModelCreds() {
+      const configured = {};
+      try {
+        const d = await (await fetch("api/code-agent/credentials", { cache: "no-store" })).json();
+        if (!d.ok) { $("modelcreds").innerHTML = '<div class="empty">Code agent unavailable: ' + esc(d.error || "unknown") + "</div>"; return; }
+        (d.backends || []).forEach(b => { configured[b.backend] = !!b.configured; });
+      } catch (e) { $("modelcreds").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; return; }
+      $("modelcreds").innerHTML = MODEL_BACKENDS.map(b => {
+        const set = !!configured[b.key];
+        const ph = set ? "configured — blank keeps it" : esc(b.ph || "not set");
+        const status = set ? '<span class="yes">configured</span>' : '<span class="no">not set</span>';
+        const clear = set ? ` <button class="btn ghost" onclick="clearCred('${b.key}')">Clear</button>` : "";
+        return `<label for="cred_${b.key}">${esc(b.label)}</label>
+          <input id="cred_${b.key}" type="password" placeholder="${ph}">
+          <span></span><span><button class="btn" onclick="saveCred('${b.key}')">Save</button>${clear} ${status}</span>`;
+      }).join("");
+    }
+    async function saveCred(backend) {
+      const el = $("cred_" + backend);
+      const apiKey = el.value;
+      if (!apiKey) { $("credMsg").textContent = "Enter the API key."; return; }
+      $("credMsg").textContent = "Saving to the agent…";
+      try {
+        const d = await (await fetch("api/code-agent/credentials", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backend, apiKey }) })).json();
+        el.value = "";
+        $("credMsg").textContent = d.ok ? "Saved to the Code Agent." : (d.error || "failed");
+        if (d.ok) loadModelCreds();
+      } catch (e) { $("credMsg").textContent = "Save failed: " + e.message; }
+    }
+    async function clearCred(backend) {
+      if (!confirm(`Remove the ${backend} API key from the Code Agent?`)) return;
+      try {
+        const d = await (await fetch("api/code-agent/credentials/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backend }) })).json();
+        $("credMsg").textContent = d.ok ? "Removed." : (d.error || "failed");
+        loadModelCreds();
+      } catch (e) { $("credMsg").textContent = "Remove failed: " + e.message; }
     }
 
     // ---- code repositories (held by the agent) ----

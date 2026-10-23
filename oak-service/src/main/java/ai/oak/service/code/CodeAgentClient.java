@@ -34,25 +34,31 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Relays repository management to the <b>Code Agent</b> over HTTP. The agent — which may run on another host
- * and holds the git credentials — does the actual pulling; this client only tells it which repositories to
- * hold and reads back their status. OAK stores no checkout and no credentials.
+ * Relays settings to the <b>Code Agent</b> over HTTP. The agent — which may run on another host — does all
+ * code handling: it holds the git and model credentials and pulls the repositories. OAK stores neither; it
+ * only tells the agent which repositories to hold and which model API keys to use, and reads back status.
  *
- * <p>The agent's repository contract (see {@code docs/code-agent-repos.md}):
+ * <p>The model API key is <b>write-only through OAK</b>: OAK forwards it to the agent and never persists or
+ * returns it. The agent stores it. {@link #listCredentials()} reports only which backends are configured,
+ * never the key itself.
+ *
+ * <p>The agent's contract (see {@code docs/code-agent-repos.md}):
  *
  * <ul>
  *   <li>{@code POST /v1/code/repos} {@code {url, branch}} — register a repo; the agent starts pulling.</li>
  *   <li>{@code GET /v1/code/repos} — {@code {repos:[{slug,url,branch,status,commit,detail,updatedAt}]}}.</li>
- *   <li>{@code POST /v1/code/repos/refresh} {@code {slug}} — pull again.</li>
- *   <li>{@code POST /v1/code/repos/delete} {@code {slug}} — forget it.</li>
+ *   <li>{@code POST /v1/code/repos/refresh} {@code {slug}} / {@code .../delete} {@code {slug}}.</li>
+ *   <li>{@code GET /v1/code/credentials} — {@code {backends:[{backend,configured,updatedAt}]}} (never the key).</li>
+ *   <li>{@code POST /v1/code/credentials} {@code {backend, apiKey}} / {@code .../delete} {@code {backend}}.</li>
  * </ul>
  */
 @ApplicationScoped
-public class CodeAgentRepos {
+public class CodeAgentClient {
 
-    private static final String PATH = "/v1/code/repos";
+    private static final String REPOS = "/v1/code/repos";
+    private static final String CREDENTIALS = "/v1/code/credentials";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    // Register/refresh kick off an async pull on the agent and return promptly; listing is a quick read.
+    // Register/refresh kick off an async pull on the agent and return promptly; the rest are quick reads/writes.
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {
     };
@@ -64,32 +70,23 @@ public class CodeAgentRepos {
     private final HttpClient http;
     private final ObjectMapper mapper;
 
-    public CodeAgentRepos() {
+    public CodeAgentClient() {
         this(null);
     }
 
     /** For tests: a fixed base URL instead of the injected settings. */
-    CodeAgentRepos(final String overrideBaseUrl) {
+    CodeAgentClient(final String overrideBaseUrl) {
         this.overrideBaseUrl = overrideBaseUrl;
         this.http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
         this.mapper = JsonMapper.builder().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
                 .serializationInclusion(JsonInclude.Include.NON_NULL).build();
     }
 
+    // ---- repositories ----
+
     /** The repositories the agent currently holds, each a {@code {slug,url,branch,status,commit,detail,updatedAt}} map. */
     public List<Map<String, Object>> list() {
-        final Object repos = exchange(get(PATH)).get("repos");
-        final List<Map<String, Object>> out = new ArrayList<>();
-        if (repos instanceof List<?> items) {
-            for (final Object item : items) {
-                if (item instanceof Map<?, ?> m) {
-                    final Map<String, Object> copy = new LinkedHashMap<>();
-                    m.forEach((k, v) -> copy.put(String.valueOf(k), v));
-                    out.add(copy);
-                }
-            }
-        }
-        return out;
+        return asMaps(exchange(get(REPOS)).get("repos"));
     }
 
     /** Register a repository with the agent (or re-point it); the agent begins pulling. */
@@ -97,16 +94,37 @@ public class CodeAgentRepos {
         final Map<String, Object> body = new LinkedHashMap<>();
         body.put("url", url);
         body.put("branch", branch);
-        return exchange(post(PATH, body));
+        return exchange(post(REPOS, body));
     }
 
     public Map<String, Object> refresh(final String slug) {
-        return exchange(post(PATH + "/refresh", Map.of("slug", slug)));
+        return exchange(post(REPOS + "/refresh", Map.of("slug", slug)));
     }
 
     public Map<String, Object> delete(final String slug) {
-        return exchange(post(PATH + "/delete", Map.of("slug", slug)));
+        return exchange(post(REPOS + "/delete", Map.of("slug", slug)));
     }
+
+    // ---- model credentials (write-only through OAK) ----
+
+    /** Which model backends the agent has a key configured for, each {@code {backend, configured, updatedAt}} — never the key. */
+    public List<Map<String, Object>> listCredentials() {
+        return asMaps(exchange(get(CREDENTIALS)).get("backends"));
+    }
+
+    /** Store (or replace) the API key the agent uses for {@code backend} (e.g. {@code claude}). OAK does not keep it. */
+    public Map<String, Object> setCredential(final String backend, final String apiKey) {
+        final Map<String, Object> body = new LinkedHashMap<>();
+        body.put("backend", backend);
+        body.put("apiKey", apiKey);
+        return exchange(post(CREDENTIALS, body));
+    }
+
+    public Map<String, Object> deleteCredential(final String backend) {
+        return exchange(post(CREDENTIALS + "/delete", Map.of("backend", backend)));
+    }
+
+    // ---- transport ----
 
     private HttpRequest get(final String path) {
         return HttpRequest.newBuilder(URI.create(baseUrl() + path)).timeout(REQUEST_TIMEOUT).header("Accept", "application/json")
@@ -137,6 +155,20 @@ public class CodeAgentRepos {
             Thread.currentThread().interrupt();
             throw new CodeAgentException("interrupted while contacting the code agent");
         }
+    }
+
+    private static List<Map<String, Object>> asMaps(final Object value) {
+        final List<Map<String, Object>> out = new ArrayList<>();
+        if (value instanceof List<?> items) {
+            for (final Object item : items) {
+                if (item instanceof Map<?, ?> m) {
+                    final Map<String, Object> copy = new LinkedHashMap<>();
+                    m.forEach((k, v) -> copy.put(String.valueOf(k), v));
+                    out.add(copy);
+                }
+            }
+        }
+        return out;
     }
 
     private String baseUrl() {

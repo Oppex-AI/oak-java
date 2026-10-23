@@ -58,6 +58,34 @@ OAK's UI shows `READY` as the "repo is ready" confirmation and surfaces `FAILED`
 `detail`. Access problems (a private repo the agent can't reach) are fixed on the **agent's** side — that
 is where the credentials live.
 
+## Model credentials
+
+The agent calls a model (Claude now; Codex etc. later) and **holds the API keys**. OAK's Settings page is a
+**write-only** way to set them: OAK forwards the key and **never persists or returns it**. The agent stores
+it. `GET` reports only which backends are configured — never the key.
+
+### `GET /v1/code/credentials`
+
+```json
+{ "backends": [ { "backend": "claude", "configured": true, "updatedAt": "2026-10-23T12:00:00Z" } ] }
+```
+
+### `POST /v1/code/credentials`
+
+```json
+{ "backend": "claude", "apiKey": "sk-ant-…" }          // request — store/replace the key
+{ "ok": true, "backend": "claude", "configured": true } // response — never echo the key back
+```
+- `backend` is a stable id: `claude` today; `codex` (etc.) later, same shape.
+- Replacing the key is just another `POST` — this is how an operator rotates it.
+
+### `POST /v1/code/credentials/delete` — `{ "backend": "claude" }`
+
+Remove the stored key for that backend.
+
+> Transport: if the agent is on another host, serve it over **HTTPS** — the key crosses the network on
+> `POST /v1/code/credentials`. The agent must never log the key or return it from any endpoint.
+
 ## Incident fixes
 
 `CODE_INCIDENT_FIX` (an OAK tool) forwards a step to `POST /v1/code/incident-fix` on the same agent. The

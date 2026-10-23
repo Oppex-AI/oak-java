@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import ai.oak.service.code.CodeAgentRepos.CodeAgentException;
+import ai.oak.service.code.CodeAgentClient.CodeAgentException;
 import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -29,8 +29,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
-/** The repo-management relay to the code agent: request shapes and how transport/HTTP errors surface. */
-class CodeAgentReposTest {
+/** The relay to the code agent: repo + credential request shapes and how transport/HTTP errors surface. */
+class CodeAgentClientTest {
 
     @Test
     void listParsesTheAgentsRepos() throws Exception {
@@ -63,10 +63,38 @@ class CodeAgentReposTest {
     }
 
     @Test
+    void setCredentialPostsBackendAndKeyToTheAgent() throws Exception {
+        final AtomicReference<String> sent = new AtomicReference<>();
+        final HttpServer server = serve("/v1/code/credentials", 200, "{\"backend\":\"claude\",\"configured\":true}", sent);
+        try {
+            final Map<String, Object> res = client(server).setCredential("claude", "sk-ant-secret");
+            assertTrue(sent.get().contains("\"backend\":\"claude\""), sent.get());
+            assertTrue(sent.get().contains("sk-ant-secret"), sent.get());
+            assertEquals(Boolean.TRUE, res.get("configured"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void listCredentialsParsesBackends() throws Exception {
+        final HttpServer server = serve("/v1/code/credentials", 200,
+                "{\"backends\":[{\"backend\":\"claude\",\"configured\":true}]}", null);
+        try {
+            final List<Map<String, Object>> backends = client(server).listCredentials();
+            assertEquals(1, backends.size());
+            assertEquals("claude", backends.get(0).get("backend"));
+            assertEquals(Boolean.TRUE, backends.get(0).get("configured"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void nonTwoxxBecomesACodeAgentException() throws Exception {
         final HttpServer server = serve("/v1/code/repos", 503, "down", null);
         try {
-            final CodeAgentRepos client = client(server);
+            final CodeAgentClient client = client(server);
             final CodeAgentException e = assertThrows(CodeAgentException.class, client::list);
             assertTrue(e.getMessage().contains("503"), e.getMessage());
         } finally {
@@ -80,12 +108,12 @@ class CodeAgentReposTest {
         final int port = server.getAddress().getPort();
         server.stop(0); // nothing listening now → connection refused
         final CodeAgentException e = assertThrows(CodeAgentException.class,
-                () -> new CodeAgentRepos("http://localhost:" + port).list());
+                () -> new CodeAgentClient("http://localhost:" + port).list());
         assertTrue(e.getMessage().contains("could not reach the code agent"), e.getMessage());
     }
 
-    private static CodeAgentRepos client(final HttpServer server) {
-        return new CodeAgentRepos("http://localhost:" + server.getAddress().getPort());
+    private static CodeAgentClient client(final HttpServer server) {
+        return new CodeAgentClient("http://localhost:" + server.getAddress().getPort());
     }
 
     private static HttpServer serve(final String path, final int status, final String body,

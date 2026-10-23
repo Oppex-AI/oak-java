@@ -15,8 +15,8 @@
  */
 package ai.oak.service.ui;
 
-import ai.oak.service.code.CodeAgentRepos;
-import ai.oak.service.code.CodeAgentRepos.CodeAgentException;
+import ai.oak.service.code.CodeAgentClient;
+import ai.oak.service.code.CodeAgentClient.CodeAgentException;
 import ai.oak.service.code.CodeAgentSettings;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -27,20 +27,25 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * The Code Agent settings OAK manages: where the agent is (its base URL — it may be on another host), and
- * which repositories it should hold. OAK only relays repository settings to the agent and reads back status;
- * the agent does the pulling and holds the git credentials. OAK stores no checkout and no credentials.
+ * The Code Agent settings OAK manages: where the agent is (its base URL — it may be on another host), which
+ * repositories it should hold, and the model API keys it should use. OAK only relays these to the agent and
+ * reads back status; the agent does the pulling and holds the git and model credentials. OAK stores no
+ * checkout and no credentials — a model API key is forwarded write-only and never persisted or returned.
  */
 @Path("/api")
 public class CodeReposResource {
+
+    /** Model backends OAK offers a key field for. Add "codex" (etc.) here when the agent supports it. */
+    private static final Set<String> BACKENDS = Set.of("claude");
 
     @Inject
     CodeAgentSettings settings;
 
     @Inject
-    CodeAgentRepos agent;
+    CodeAgentClient agent;
 
     @GET
     @Path("/code-agent")
@@ -72,6 +77,54 @@ public class CodeReposResource {
         }
         settings.setBaseUrl(req.baseUrl().trim());
         return Map.of("ok", true, "baseUrl", settings.baseUrl());
+    }
+
+    @GET
+    @Path("/code-agent/credentials")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> listCredentials() {
+        try {
+            // The agent returns only which backends are configured — never the key itself.
+            return Map.of("ok", true, "backends", agent.listCredentials());
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage(), "backends", java.util.List.of());
+        }
+    }
+
+    @POST
+    @Path("/code-agent/credentials")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> saveCredential(final CredentialRequest req) {
+        if (req == null || !BACKENDS.contains(req.backend())) {
+            return Map.of("ok", false, "error", "unknown model backend; supported: " + BACKENDS);
+        }
+        if (blank(req.apiKey())) {
+            return Map.of("ok", false, "error", "an API key is required");
+        }
+        try {
+            // Forward write-only: the agent stores the key; OAK keeps nothing and never logs it.
+            agent.setCredential(req.backend(), req.apiKey());
+            return Map.of("ok", true, "backend", req.backend(), "configured", true);
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    @POST
+    @Path("/code-agent/credentials/delete")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> deleteCredential(final BackendRequest req) {
+        if (req == null || !BACKENDS.contains(req.backend())) {
+            return Map.of("ok", false, "error", "unknown model backend; supported: " + BACKENDS);
+        }
+        try {
+            agent.deleteCredential(req.backend());
+            return Map.of("ok", true);
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
     }
 
     @GET
@@ -163,6 +216,13 @@ public class CodeReposResource {
     }
 
     public record AgentRequest(String baseUrl) {
+    }
+
+    /** Set a model API key for a backend (e.g. {@code claude}). Forwarded write-only; never stored by OAK. */
+    public record CredentialRequest(String backend, String apiKey) {
+    }
+
+    public record BackendRequest(String backend) {
     }
 
     /** Add or re-point a repository. A blank {@code branch} lets the agent use the repository default. */
