@@ -25,14 +25,9 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * CODE_INCIDENT_FIX is a thin relay to the local code agent: these pin the outcome→ToolResult mapping
@@ -102,73 +97,8 @@ class CodeIncidentFixToolTest {
         assertEquals("CODE_AGENT_UNREACHABLE", r.data().get("errorCode"));
     }
 
-    @Test
-    void readyRepoPassesLocalCheckoutToAgentAndResult(@TempDir final Path dir) throws Exception {
-        final CodeRepos store = repoStore(dir);
-        final String repoUrl = "https://github.com/acme/widgets.git";
-        final String slug = store.upsert(repoUrl, null);
-        Files.createDirectories(store.pathFor(slug));
-        store.update(slug, r -> r.ready("deadbeefcafe"));
-        final String localPath = store.pathFor(slug).toString();
-
-        final AtomicReference<String> sent = new AtomicReference<>();
-        final HttpServer server = captureServe(200, "{\"outcome\":\"PR_CREATED\",\"prUrl\":\"https://g/x/pull/1\"}", sent);
-        try {
-            final CodeIncidentFixTool tool = toolFor(server);
-            tool.repos = store;
-            final ToolResult r = tool.execute(Map.of("incidentId", "INC-9", "repoUrl", repoUrl));
-            assertTrue(r.success());
-            // OAK handed the agent the local checkout it already downloaded...
-            assertTrue(sent.get().contains("repoLocalPath"), sent.get());
-            assertTrue(sent.get().contains(localPath), sent.get());
-            // ...and recorded on the result what it supplied.
-            assertEquals(Boolean.TRUE, r.data().get("repoReady"));
-            assertEquals(localPath, r.data().get("repoLocalPath"));
-            assertEquals("deadbeefcafe", r.data().get("repoCommit"));
-        } finally {
-            server.stop(0);
-        }
-    }
-
-    @Test
-    void repoNotDownloadedIsReportedUnconfigured(@TempDir final Path dir) throws Exception {
-        final CodeRepos store = repoStore(dir);
-        final HttpServer server = serve(200, "{\"outcome\":\"PR_CREATED\"}");
-        try {
-            final CodeIncidentFixTool tool = toolFor(server);
-            tool.repos = store;
-            final ToolResult r = tool.execute(Map.of("incidentId", "INC-10", "repoUrl", "https://github.com/x/not-added.git"));
-            assertEquals(Boolean.FALSE, r.data().get("repoReady"));
-            assertEquals("UNCONFIGURED", r.data().get("repoStatus"));
-        } finally {
-            server.stop(0);
-        }
-    }
-
-    private static CodeRepos repoStore(final Path dir) {
-        final CodeRepos s = new CodeRepos();
-        s.dataDir = Optional.of(dir.toString());
-        s.init();
-        return s;
-    }
-
     private static CodeIncidentFixTool toolFor(final HttpServer server) {
         return new CodeIncidentFixTool("http://localhost:" + server.getAddress().getPort());
-    }
-
-    private static HttpServer captureServe(final int status, final String body, final AtomicReference<String> captured)
-            throws Exception {
-        final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/code/incident-fix", exchange -> {
-            captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            final byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(status, bytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(bytes);
-            }
-        });
-        server.start();
-        return server;
     }
 
     private static HttpServer serve(final int status, final String body) throws Exception {

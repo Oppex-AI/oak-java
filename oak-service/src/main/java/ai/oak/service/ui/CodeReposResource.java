@@ -15,9 +15,9 @@
  */
 package ai.oak.service.ui;
 
-import ai.oak.service.code.CodeRepo;
-import ai.oak.service.code.CodeRepos;
-import ai.oak.service.code.RepoDownloader;
+import ai.oak.service.code.CodeAgentRepos;
+import ai.oak.service.code.CodeAgentRepos.CodeAgentException;
+import ai.oak.service.code.CodeAgentSettings;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -29,80 +29,127 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manage the code repositories OAK downloads for the local Code Agent. Setting a repo URL kicks off an
- * asynchronous download; the UI polls {@link #list()} until the repo reports {@code READY} — OAK's
- * confirmation that the code is downloaded and ready. No secret is held (the host's git credentials are
- * used), so the full config is returned.
+ * The Code Agent settings OAK manages: where the agent is (its base URL — it may be on another host), and
+ * which repositories it should hold. OAK only relays repository settings to the agent and reads back status;
+ * the agent does the pulling and holds the git credentials. OAK stores no checkout and no credentials.
  */
 @Path("/api")
 public class CodeReposResource {
 
     @Inject
-    CodeRepos store;
+    CodeAgentSettings settings;
 
     @Inject
-    RepoDownloader downloader;
+    CodeAgentRepos agent;
+
+    @GET
+    @Path("/code-agent")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> agentInfo() {
+        final Map<String, Object> out = new LinkedHashMap<>();
+        out.put("baseUrl", settings.baseUrl());
+        out.put("overridden", settings.isOverridden());
+        try {
+            agent.list(); // a cheap probe: if it answers, it's reachable
+            out.put("reachable", true);
+        } catch (CodeAgentException e) {
+            out.put("reachable", false);
+            out.put("error", e.getMessage());
+        }
+        return out;
+    }
+
+    @POST
+    @Path("/code-agent")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> saveAgent(final AgentRequest req) {
+        if (req == null || blank(req.baseUrl())) {
+            return Map.of("ok", false, "error", "a code-agent base URL is required");
+        }
+        if (!looksLikeHttpUrl(req.baseUrl())) {
+            return Map.of("ok", false, "error", "the base URL must start with http:// or https://");
+        }
+        settings.setBaseUrl(req.baseUrl().trim());
+        return Map.of("ok", true, "baseUrl", settings.baseUrl());
+    }
 
     @GET
     @Path("/code-repos")
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> list() {
-        final Map<String, Object> out = new LinkedHashMap<>();
-        store.all().forEach((slug, repo) -> out.put(slug, view(repo)));
-        return out;
+    public Map<String, Object> listRepos() {
+        try {
+            final Map<String, Object> repos = new LinkedHashMap<>();
+            agent.list().forEach(r -> repos.put(slugOf(r), view(r)));
+            return Map.of("ok", true, "repos", repos);
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage(), "repos", Map.of());
+        }
     }
 
     @POST
     @Path("/code-repos")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> save(final SaveRequest req) {
+    public Map<String, Object> addRepo(final RepoRequest req) {
         if (req == null || blank(req.url())) {
             return Map.of("ok", false, "error", "a repository URL is required");
         }
         if (!looksLikeGitUrl(req.url())) {
             return Map.of("ok", false, "error", "that doesn't look like a git URL (expected https://… or git@…)");
         }
-        final String slug = store.upsert(req.url(), req.branch());
-        downloader.enqueue(slug);
-        return Map.of("ok", true, "slug", slug, "status", "CLONING");
+        try {
+            final Map<String, Object> res = agent.add(req.url().trim(), blank(req.branch()) ? null : req.branch().trim());
+            return Map.of("ok", true, "slug", String.valueOf(res.getOrDefault("slug", "")), "status",
+                    String.valueOf(res.getOrDefault("status", "CLONING")));
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
     }
 
     @POST
     @Path("/code-repos/refresh")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> refresh(final SlugRequest req) {
-        if (req == null || blank(req.slug()) || store.get(req.slug()).isEmpty()) {
-            return Map.of("ok", false, "error", "unknown repository");
-        }
-        downloader.enqueue(req.slug().trim());
-        return Map.of("ok", true, "status", "CLONING");
+    public Map<String, Object> refreshRepo(final SlugRequest req) {
+        return relaySlug(req, agent::refresh);
     }
 
     @POST
     @Path("/code-repos/delete")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> delete(final SlugRequest req) {
+    public Map<String, Object> deleteRepo(final SlugRequest req) {
+        return relaySlug(req, agent::delete);
+    }
+
+    private Map<String, Object> relaySlug(final SlugRequest req, final java.util.function.Consumer<String> action) {
         if (req == null || blank(req.slug())) {
             return Map.of("ok", false, "error", "slug is required");
         }
-        store.remove(req.slug().trim());
-        return Map.of("ok", true);
+        try {
+            action.accept(req.slug().trim());
+            return Map.of("ok", true);
+        } catch (CodeAgentException e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
     }
 
-    private static Map<String, Object> view(final CodeRepo repo) {
-        final Map<String, Object> v = new LinkedHashMap<>();
-        v.put("url", repo.url());
-        v.put("branch", repo.branch());
-        v.put("status", repo.status().name());
-        v.put("ready", repo.isReady());
-        v.put("commit", repo.commit());
-        v.put("localPath", repo.localPath());
-        v.put("detail", repo.detail());
-        v.put("updatedAt", repo.updatedAt());
+    /** Pass the agent's view through, adding a {@code ready} convenience flag. */
+    private static Map<String, Object> view(final Map<String, Object> repo) {
+        final Map<String, Object> v = new LinkedHashMap<>(repo);
+        v.put("ready", "READY".equalsIgnoreCase(String.valueOf(repo.get("status"))));
         return v;
+    }
+
+    private static String slugOf(final Map<String, Object> repo) {
+        final Object slug = repo.get("slug");
+        return slug != null && !slug.toString().isBlank() ? slug.toString() : String.valueOf(repo.get("url"));
+    }
+
+    private static boolean looksLikeHttpUrl(final String url) {
+        final String s = url.trim();
+        return s.startsWith("http://") || s.startsWith("https://");
     }
 
     private static boolean looksLikeGitUrl(final String url) {
@@ -115,8 +162,11 @@ public class CodeReposResource {
         return s == null || s.isBlank();
     }
 
-    /** Add or re-point a repository. A blank {@code branch} checks out the repository default. */
-    public record SaveRequest(String url, String branch) {
+    public record AgentRequest(String baseUrl) {
+    }
+
+    /** Add or re-point a repository. A blank {@code branch} lets the agent use the repository default. */
+    public record RepoRequest(String url, String branch) {
     }
 
     public record SlugRequest(String slug) {
