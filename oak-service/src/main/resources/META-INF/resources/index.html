@@ -668,6 +668,7 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       loadCodeRepos();
     }
     async function deleteRepo(slug) {
+      if (!confirm(`Remove "${slug}" from the Code Agent?\n\nThis also deletes the agent's local checkout of the repository.`)) return;
       await fetch("api/code-repos/delete", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug }) });
       loadCodeRepos();
