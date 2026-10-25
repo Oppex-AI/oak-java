@@ -127,23 +127,69 @@ public class CodeIncidentFixTool implements Tool {
         }
     }
 
-    /** Map the agent's {@code {outcome, prUrl, branch, commitSha, rationale, detail}} to a result; success = outcome != ERROR. */
+    /**
+     * Map the agent's {@code {outcome, prUrl, branch, commitSha, rationale, detail}} to a result.
+     *
+     * <p>Outcome is the agent's verdict, not a transport status:
+     * <ul>
+     *   <li>{@code PR_CREATED} — a fix was proposed as a PR → <b>success</b>, {@code fixApplied=true}.</li>
+     *   <li>{@code NO_FIX_NEEDED} — the agent analysed and deliberately changed nothing → <b>success</b>,
+     *       {@code fixApplied=false} (this is NOT a failure; the step did its job).</li>
+     *   <li>{@code ERROR} — the agent could not do the work (bad input, model/clone failure) → <b>failure</b>.</li>
+     *   <li>missing/blank outcome → failure (the agent must state a verdict).</li>
+     *   <li>any other non-{@code ERROR} outcome → treated as success, forward-compatibly.</li>
+     * </ul>
+     * The human-readable {@code summary} lets the platform show "no change needed — &lt;why&gt;" cleanly.
+     */
     private static ToolResult toResult(final Map<String, Object> body) {
-        final String outcome = str(body.get("outcome"));
+        final String outcome = normalize(str(body.get("outcome")));
         final Map<String, Object> data = new LinkedHashMap<>();
         data.put("outcome", outcome);
-        data.put("prUrl", body.get("prUrl"));
-        data.put("branch", body.get("branch"));
-        data.put("commitSha", body.get("commitSha"));
-        data.put("rationale", body.get("rationale"));
-        data.put("detail", body.get("detail"));
-        if (outcome != null && !"ERROR".equalsIgnoreCase(outcome)) {
-            return new ToolResult(0, "", "", false, data);
+        putIfPresent(data, "prUrl", body.get("prUrl"));
+        putIfPresent(data, "branch", body.get("branch"));
+        putIfPresent(data, "commitSha", body.get("commitSha"));
+        putIfPresent(data, "rationale", body.get("rationale"));
+        putIfPresent(data, "detail", body.get("detail"));
+        // Forward token usage verbatim (keys already match the platform's shape); lands at output.usage for
+        // every outcome, since a run spends tokens whether it opens a PR, finds no fix, or errors.
+        putIfPresent(data, "usage", body.get("usage"));
+
+        if (outcome.isBlank()) {
+            return error("CODE_AGENT_NO_OUTCOME", "code agent returned no outcome");
         }
-        data.put("errorCode", "CODE_FIX_ERROR");
-        data.put("errorMessage",
-                firstNonBlank(str(body.get("detail")), str(body.get("rationale")), "code agent reported outcome=" + outcome));
-        return new ToolResult(1, "", "", false, data);
+        if ("ERROR".equals(outcome)) {
+            data.put("errorCode", "CODE_FIX_ERROR");
+            data.put("errorMessage",
+                    firstNonBlank(str(body.get("detail")), str(body.get("rationale")), "code agent reported an error"));
+            return new ToolResult(1, "", "", false, data);
+        }
+        // A verdict the agent reached successfully (PR_CREATED, NO_FIX_NEEDED, or a future non-error outcome).
+        data.put("fixApplied", "PR_CREATED".equals(outcome));
+        data.put("summary", summaryFor(outcome, body));
+        return new ToolResult(0, "", "", false, data);
+    }
+
+    /** A short, human sentence the platform can show for the verdict. */
+    private static String summaryFor(final String outcome, final Map<String, Object> body) {
+        if ("PR_CREATED".equals(outcome)) {
+            final String pr = str(body.get("prUrl"));
+            return pr != null && !pr.isBlank() ? "Fix proposed as a pull request: " + pr : "Fix proposed as a pull request.";
+        }
+        if ("NO_FIX_NEEDED".equals(outcome)) {
+            final String why = firstNonBlank(str(body.get("rationale")), str(body.get("detail")), "");
+            return why.isBlank() ? "No code change needed." : "No code change needed — " + why;
+        }
+        return firstNonBlank(str(body.get("detail")), str(body.get("rationale")), outcome);
+    }
+
+    private static String normalize(final String outcome) {
+        return outcome == null ? "" : outcome.strip().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static void putIfPresent(final Map<String, Object> data, final String key, final Object value) {
+        if (value != null && !(value instanceof String s && s.isBlank())) {
+            data.put(key, value);
+        }
     }
 
     private static ToolResult error(final String code, final String message) {

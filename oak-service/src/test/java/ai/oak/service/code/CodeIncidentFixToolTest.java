@@ -75,6 +75,51 @@ class CodeIncidentFixToolTest {
     }
 
     @Test
+    void noFixNeededMapsToSuccessNotFailure() throws Exception {
+        final HttpServer server = serve(200,
+                "{\"outcome\":\"NO_FIX_NEEDED\",\"rationale\":\"OPD-880 already moved the write out of the transaction\"}");
+        try {
+            final ToolResult r = toolFor(server).execute(Map.of("incidentId", "INC-5"));
+            assertTrue(r.success(), "a deliberate no-op is a successful analysis, not a failed step");
+            assertEquals("NO_FIX_NEEDED", r.data().get("outcome"));
+            assertEquals(Boolean.FALSE, r.data().get("fixApplied"));
+            assertTrue(String.valueOf(r.data().get("summary")).startsWith("No code change needed —"),
+                    String.valueOf(r.data().get("summary")));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void usageIsForwardedVerbatim() throws Exception {
+        final HttpServer server = serve(200, "{\"outcome\":\"PR_CREATED\",\"prUrl\":\"https://x/y/pull/9\"," +
+                "\"usage\":{\"inputTokens\":1200,\"outputTokens\":300,\"totalTokens\":1500,\"cacheReadInputTokens\":800}}");
+        try {
+            final ToolResult r = toolFor(server).execute(Map.of("incidentId", "INC-7"));
+            assertTrue(r.success());
+            @SuppressWarnings("unchecked")
+            final Map<String, Object> usage = (Map<String, Object>) r.data().get("usage");
+            assertEquals(1200, usage.get("inputTokens"));
+            assertEquals(1500, usage.get("totalTokens"));
+            assertEquals(800, usage.get("cacheReadInputTokens"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void missingOutcomeMapsToFailure() throws Exception {
+        final HttpServer server = serve(200, "{\"detail\":\"something happened\"}");
+        try {
+            final ToolResult r = toolFor(server).execute(Map.of("incidentId", "INC-6"));
+            assertFalse(r.success());
+            assertEquals("CODE_AGENT_NO_OUTCOME", r.data().get("errorCode"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void nonTwoxxMapsToHttpError() throws Exception {
         final HttpServer server = serve(500, "boom");
         try {
