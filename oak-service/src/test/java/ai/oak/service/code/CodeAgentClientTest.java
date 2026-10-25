@@ -63,12 +63,14 @@ class CodeAgentClientTest {
     }
 
     @Test
-    void setCredentialPostsBackendAndKeyToTheAgent() throws Exception {
+    void setCredentialPostsBackendProviderAndKeyToTheAgent() throws Exception {
         final AtomicReference<String> sent = new AtomicReference<>();
-        final HttpServer server = serve("/v1/code/credentials", 200, "{\"backend\":\"claude\",\"configured\":true}", sent);
+        final HttpServer server = serve("/v1/code/credentials", 200,
+                "{\"backend\":\"claude\",\"provider\":\"claude-api-key\",\"configured\":true}", sent);
         try {
-            final Map<String, Object> res = client(server).setCredential("claude", "sk-ant-secret");
+            final Map<String, Object> res = client(server).setCredential("claude", "claude-api-key", "sk-ant-secret");
             assertTrue(sent.get().contains("\"backend\":\"claude\""), sent.get());
+            assertTrue(sent.get().contains("\"provider\":\"claude-api-key\""), sent.get());
             assertTrue(sent.get().contains("sk-ant-secret"), sent.get());
             assertEquals(Boolean.TRUE, res.get("configured"));
         } finally {
@@ -77,14 +79,29 @@ class CodeAgentClientTest {
     }
 
     @Test
-    void listCredentialsParsesBackends() throws Exception {
+    void keylessProviderSendsNoApiKey() throws Exception {
+        final AtomicReference<String> sent = new AtomicReference<>();
         final HttpServer server = serve("/v1/code/credentials", 200,
-                "{\"backends\":[{\"backend\":\"claude\",\"configured\":true}]}", null);
+                "{\"backend\":\"claude\",\"provider\":\"aws-bedrock\",\"configured\":true}", sent);
         try {
-            final List<Map<String, Object>> backends = client(server).listCredentials();
-            assertEquals(1, backends.size());
-            assertEquals("claude", backends.get(0).get("backend"));
-            assertEquals(Boolean.TRUE, backends.get(0).get("configured"));
+            client(server).setCredential("claude", "aws-bedrock", null);
+            assertTrue(sent.get().contains("\"provider\":\"aws-bedrock\""), sent.get());
+            assertTrue(!sent.get().contains("apiKey"), sent.get()); // keyless → the field is omitted entirely
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void listCredentialsParsesConfigured() throws Exception {
+        final HttpServer server = serve("/v1/code/credentials", 200, "{\"providers\":[\"claude-api-key\",\"aws-bedrock\"]," +
+                "\"configured\":[{\"backend\":\"claude\",\"provider\":\"claude-api-key\",\"configured\":true}]}", null);
+        try {
+            final List<Map<String, Object>> configured = client(server).listCredentials();
+            assertEquals(1, configured.size());
+            assertEquals("claude", configured.get(0).get("backend"));
+            assertEquals("claude-api-key", configured.get(0).get("provider"));
+            assertEquals(Boolean.TRUE, configured.get(0).get("configured"));
         } finally {
             server.stop(0);
         }

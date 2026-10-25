@@ -48,8 +48,9 @@ import java.util.Map;
  *   <li>{@code POST /v1/code/repos} {@code {url, branch}} — register a repo; the agent starts pulling.</li>
  *   <li>{@code GET /v1/code/repos} — {@code {repos:[{slug,url,branch,status,commit,detail,updatedAt}]}}.</li>
  *   <li>{@code POST /v1/code/repos/refresh} {@code {slug}} / {@code .../delete} {@code {slug}}.</li>
- *   <li>{@code GET /v1/code/credentials} — {@code {backends:[{backend,configured,updatedAt}]}} (never the key).</li>
- *   <li>{@code POST /v1/code/credentials} {@code {backend, apiKey}} / {@code .../delete} {@code {backend}}.</li>
+ *   <li>{@code GET /v1/code/credentials} — {@code {providers:[…], configured:[{backend,provider,configured,updatedAt}]}}
+ *       (never the key).</li>
+ *   <li>{@code POST /v1/code/credentials} {@code {backend, provider, apiKey?}} / {@code .../delete} {@code {backend}}.</li>
  * </ul>
  */
 @ApplicationScoped
@@ -107,16 +108,24 @@ public class CodeAgentClient {
 
     // ---- model credentials (write-only through OAK) ----
 
-    /** Which model backends the agent has a key configured for, each {@code {backend, configured, updatedAt}} — never the key. */
+    /**
+     * Which backends the agent has a credential configured for, each {@code {backend, provider, configured, updatedAt}}
+     * — never the key. Reads the agent's {@code configured} list (the companion {@code providers} catalog is ignored).
+     */
     public List<Map<String, Object>> listCredentials() {
-        return asMaps(exchange(get(CREDENTIALS)).get("backends"));
+        return asMaps(exchange(get(CREDENTIALS)).get("configured"));
     }
 
-    /** Store (or replace) the API key the agent uses for {@code backend} (e.g. {@code claude}). OAK does not keep it. */
-    public Map<String, Object> setCredential(final String backend, final String apiKey) {
+    /**
+     * Select the {@code provider} the agent uses for {@code backend} (e.g. {@code claude}/{@code claude-api-key}), and
+     * for a key-based provider the API key. For a keyless provider (e.g. {@code aws-bedrock}) pass {@code null} —
+     * no {@code apiKey} is sent. OAK forwards write-only and keeps nothing.
+     */
+    public Map<String, Object> setCredential(final String backend, final String provider, final String apiKey) {
         final Map<String, Object> body = new LinkedHashMap<>();
         body.put("backend", backend);
-        body.put("apiKey", apiKey);
+        body.put("provider", provider);
+        body.put("apiKey", apiKey); // NON_NULL serialization omits this entirely for a keyless provider
         return exchange(post(CREDENTIALS, body));
     }
 

@@ -226,10 +226,11 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         </div>
         <div class="card">
           <h2>Model backends</h2>
-          <div class="sub" style="margin:-4px 0 10px">The API key the agent uses to call the model.
-            <b>Stored by the Code Agent, not OAK</b> — OAK forwards it and never keeps or shows it back; you can
-            update it here at any time. If the agent is on another host, use an <span class="mono">https://</span>
-            base URL so the key isn't sent in the clear.</div>
+          <div class="sub" style="margin:-4px 0 10px">How the agent authenticates to the model. Pick a
+            <b>provider</b> — an Anthropic API key, or keyless <span class="mono">AWS Bedrock</span> (the agent uses its
+            host's AWS role/SSO, no key). <b>Stored by the Code Agent, not OAK</b> — OAK forwards your choice and never
+            keeps or shows a key back; update it here at any time. If the agent is on another host, use an
+            <span class="mono">https://</span> base URL so the key isn't sent in the clear.</div>
           <div id="modelcreds" class="kv"><div class="empty">Loading…</div></div>
           <div id="credMsg" class="sub" style="margin:10px 0 0"></div>
         </div>
@@ -621,35 +622,57 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       } catch (e) { $("agentMsg").textContent = "Save failed: " + e.message; }
     }
 
-    // ---- model backends (keys live in the agent; OAK forwards write-only) ----
-    // Table-driven: add { key: "codex", label: "Codex API key", ph: "…" } here when the agent supports it.
-    const MODEL_BACKENDS = [{ key: "claude", label: "Claude API key", ph: "sk-ant-…" }];
+    // ---- model backends (credentials live in the agent; OAK forwards the provider choice write-only) ----
+    // A provider pins a backend + whether it needs a key. Add { backend:"codex", provider:"codex-api-key", … }
+    // here when we surface Codex — the relay already accepts it. aws-bedrock is keyless (host AWS role/SSO).
+    const MODEL_PROVIDERS = [
+      { backend: "claude", provider: "claude-api-key", label: "Anthropic API key", key: true, ph: "sk-ant-…" },
+      { backend: "claude", provider: "aws-bedrock", label: "AWS Bedrock — keyless (host AWS role/SSO)", key: false },
+    ];
+    const CRED_BACKENDS = [{ backend: "claude", label: "Claude" }];
     async function loadModelCreds() {
-      const configured = {};
+      const state = {};
       try {
         const d = await (await fetch("api/code-agent/credentials", { cache: "no-store" })).json();
         if (!d.ok) { $("modelcreds").innerHTML = '<div class="empty">Code agent unavailable: ' + esc(d.error || "unknown") + "</div>"; return; }
-        (d.backends || []).forEach(b => { configured[b.backend] = !!b.configured; });
+        (d.configured || []).forEach(c => { state[c.backend] = { provider: c.provider, configured: !!c.configured }; });
       } catch (e) { $("modelcreds").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; return; }
-      $("modelcreds").innerHTML = MODEL_BACKENDS.map(b => {
-        const set = !!configured[b.key];
-        const ph = set ? "configured — blank keeps it" : esc(b.ph || "not set");
-        const status = set ? '<span class="yes">configured</span>' : '<span class="no">not set</span>';
-        const clear = set ? ` <button class="btn ghost" onclick="clearCred('${b.key}')">Clear</button>` : "";
-        return `<label for="cred_${b.key}">${esc(b.label)}</label>
-          <input id="cred_${b.key}" type="password" placeholder="${ph}">
-          <span></span><span><button class="btn" onclick="saveCred('${b.key}')">Save</button>${clear} ${status}</span>`;
+      $("modelcreds").innerHTML = CRED_BACKENDS.map(b => {
+        const provs = MODEL_PROVIDERS.filter(p => p.backend === b.backend);
+        const cur = state[b.backend] || {};
+        const set = !!cur.configured;
+        const selected = provs.find(p => p.provider === cur.provider) ? cur.provider : provs[0].provider;
+        const meta = provs.find(p => p.provider === selected) || provs[0];
+        const opts = provs.map(p => `<option value="${p.provider}" ${p.provider === selected ? "selected" : ""}>${esc(p.label)}</option>`).join("");
+        const ph = meta.key ? (set ? "configured — blank keeps it" : esc(meta.ph || "")) : "not needed for this provider";
+        const status = set ? `<span class="yes">configured · ${esc(cur.provider || "")}</span>` : '<span class="no">not set</span>';
+        const clear = set ? ` <button class="btn ghost" onclick="clearCred('${b.backend}')">Clear</button>` : "";
+        return `<label for="prov_${b.backend}">${esc(b.label)} provider</label>
+          <select id="prov_${b.backend}" onchange="onProvChange('${b.backend}')">${opts}</select>
+          <label for="cred_${b.backend}">API key</label>
+          <input id="cred_${b.backend}" type="password" placeholder="${ph}"${meta.key ? "" : " disabled"}>
+          <span></span><span><button class="btn" onclick="saveCred('${b.backend}')">Save</button>${clear} ${status}</span>`;
       }).join("");
     }
+    // Enable the key field only for a key-based provider; a keyless one (Bedrock) sends no apiKey.
+    function onProvChange(backend) {
+      const meta = MODEL_PROVIDERS.find(p => p.provider === $("prov_" + backend).value);
+      const key = $("cred_" + backend);
+      key.disabled = !meta.key;
+      if (!meta.key) key.value = "";
+      key.placeholder = meta.key ? (meta.ph || "") : "not needed for this provider";
+    }
     async function saveCred(backend) {
-      const el = $("cred_" + backend);
-      const apiKey = el.value;
-      if (!apiKey) { $("credMsg").textContent = "Enter the API key."; return; }
+      const provider = $("prov_" + backend).value;
+      const meta = MODEL_PROVIDERS.find(p => p.provider === provider);
+      const apiKey = $("cred_" + backend).value;
+      if (meta.key && !apiKey) { $("credMsg").textContent = "Enter the API key."; return; }
       $("credMsg").textContent = "Saving to the agent…";
       try {
+        const body = meta.key ? { backend, provider, apiKey } : { backend, provider };
         const d = await (await fetch("api/code-agent/credentials", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ backend, apiKey }) })).json();
-        el.value = "";
+          body: JSON.stringify(body) })).json();
+        $("cred_" + backend).value = "";
         $("credMsg").textContent = d.ok ? "Saved to the Code Agent." : (d.error || "failed");
         if (d.ok) loadModelCreds();
       } catch (e) { $("credMsg").textContent = "Save failed: " + e.message; }

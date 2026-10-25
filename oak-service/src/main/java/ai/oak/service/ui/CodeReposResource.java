@@ -38,8 +38,21 @@ import java.util.Set;
 @Path("/api")
 public class CodeReposResource {
 
-    /** Model backends OAK offers a key field for. Add "codex" (etc.) here when the agent supports it. */
-    private static final Set<String> BACKENDS = Set.of("claude");
+    /**
+     * The LLM credential providers the agent accepts, each pinned to its backend and whether an API key is required.
+     * OAK validates the customer's choice against this before relaying it — there is no default provider on the agent.
+     * Add {@code codex-api-key} to the UI when we surface Codex; it is already a valid relay target here.
+     */
+    private static final Map<String, Provider> PROVIDERS = Map.of("claude-api-key", new Provider("claude", true), "aws-bedrock",
+            new Provider("claude", false), "codex-api-key", new Provider("codex", true));
+
+    /** Backends we accept a delete for — derived from the providers. */
+    private static final Set<String> BACKENDS = PROVIDERS.values().stream().map(Provider::backend)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /** An LLM credential provider: which backend it drives, and whether it needs an API key ({@code aws-bedrock} is keyless). */
+    private record Provider(String backend, boolean keyRequired) {
+    }
 
     @Inject
     CodeAgentSettings settings;
@@ -84,10 +97,10 @@ public class CodeReposResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> listCredentials() {
         try {
-            // The agent returns only which backends are configured — never the key itself.
-            return Map.of("ok", true, "backends", agent.listCredentials());
+            // The agent returns only which backends/providers are configured — never the key itself.
+            return Map.of("ok", true, "configured", agent.listCredentials());
         } catch (CodeAgentException e) {
-            return Map.of("ok", false, "error", e.getMessage(), "backends", java.util.List.of());
+            return Map.of("ok", false, "error", e.getMessage(), "configured", java.util.List.of());
         }
     }
 
@@ -96,16 +109,25 @@ public class CodeReposResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> saveCredential(final CredentialRequest req) {
-        if (req == null || !BACKENDS.contains(req.backend())) {
-            return Map.of("ok", false, "error", "unknown model backend; supported: " + BACKENDS);
+        if (req == null || blank(req.provider())) {
+            return Map.of("ok", false, "error", "a model provider is required; supported: " + PROVIDERS.keySet());
         }
-        if (blank(req.apiKey())) {
-            return Map.of("ok", false, "error", "an API key is required");
+        final Provider provider = PROVIDERS.get(req.provider());
+        if (provider == null) {
+            return Map.of("ok", false, "error", "unknown provider '" + req.provider() + "'; supported: " + PROVIDERS.keySet());
+        }
+        if (!provider.backend().equals(req.backend())) {
+            return Map.of("ok", false, "error",
+                    "provider '" + req.provider() + "' is for backend '" + provider.backend() + "', not '" + req.backend() + "'");
+        }
+        if (provider.keyRequired() && blank(req.apiKey())) {
+            return Map.of("ok", false, "error", "provider '" + req.provider() + "' requires an API key");
         }
         try {
-            // Forward write-only: the agent stores the key; OAK keeps nothing and never logs it.
-            agent.setCredential(req.backend(), req.apiKey());
-            return Map.of("ok", true, "backend", req.backend(), "configured", true);
+            // Forward write-only: the agent stores the credential; OAK keeps nothing and never logs it. A keyless
+            // provider (e.g. aws-bedrock) sends no apiKey — the agent uses the host's AWS role/SSO.
+            agent.setCredential(req.backend(), req.provider(), provider.keyRequired() ? req.apiKey() : null);
+            return Map.of("ok", true, "backend", req.backend(), "provider", req.provider(), "configured", true);
         } catch (CodeAgentException e) {
             return Map.of("ok", false, "error", e.getMessage());
         }
@@ -218,8 +240,11 @@ public class CodeReposResource {
     public record AgentRequest(String baseUrl) {
     }
 
-    /** Set a model API key for a backend (e.g. {@code claude}). Forwarded write-only; never stored by OAK. */
-    public record CredentialRequest(String backend, String apiKey) {
+    /**
+     * Select a model {@code provider} for a {@code backend} (e.g. {@code claude}/{@code claude-api-key}) and, for a
+     * key-based provider, its {@code apiKey}. Forwarded write-only; the key is never stored or returned by OAK.
+     */
+    public record CredentialRequest(String backend, String provider, String apiKey) {
     }
 
     public record BackendRequest(String backend) {
