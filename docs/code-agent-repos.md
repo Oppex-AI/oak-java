@@ -60,28 +60,43 @@ is where the credentials live.
 
 ## Model credentials
 
-The agent calls a model (Claude now; Codex etc. later) and **holds the API keys**. OAK's Settings page is a
-**write-only** way to set them: OAK forwards the key and **never persists or returns it**. The agent stores
-it. `GET` reports only which backends are configured — never the key.
+The agent calls a model (Claude now; Codex etc. later) and **holds the credentials**. A credential is a
+**provider** — there is no default; a backend with no valid provider selection fails incident-fix with
+`ERROR`. OAK's Settings page is a **write-only** way to set one: OAK forwards the choice (and a key, for a
+key-based provider) and **never persists or returns the key**. The agent stores it. `GET` reports only what
+is configured — never the key.
+
+**Providers**
+
+| provider         | backend  | apiKey                                          |
+|------------------|----------|-------------------------------------------------|
+| `claude-api-key` | `claude` | required                                        |
+| `aws-bedrock`    | `claude` | omit (keyless — uses the host's AWS role / SSO) |
+| `codex-api-key`  | `codex`  | required                                        |
 
 ### `GET /v1/code/credentials`
 
 ```json
-{ "backends": [ { "backend": "claude", "configured": true, "updatedAt": "2026-10-23T12:00:00Z" } ] }
+{ "providers": [ "claude-api-key", "aws-bedrock", "codex-api-key" ],
+  "configured": [ { "backend": "claude", "provider": "claude-api-key", "configured": true,
+                    "updatedAt": "2026-10-23T12:00:00Z" } ] }
 ```
 
 ### `POST /v1/code/credentials`
 
 ```json
-{ "backend": "claude", "apiKey": "sk-ant-…" }          // request — store/replace the key
-{ "ok": true, "backend": "claude", "configured": true } // response — never echo the key back
+{ "backend": "claude", "provider": "claude-api-key", "apiKey": "sk-ant-…" }      // key-based provider
+{ "backend": "claude", "provider": "aws-bedrock" }                               // keyless — omit apiKey
+
+{ "ok": true, "backend": "claude", "provider": "claude-api-key", "configured": true } // never echo the key
 ```
-- `backend` is a stable id: `claude` today; `codex` (etc.) later, same shape.
-- Replacing the key is just another `POST` — this is how an operator rotates it.
+- Missing/unknown `provider`, a provider used for the wrong `backend`, or a blank `apiKey` for a key-based
+  provider → `400 { "ok": false, "error": "…" }`, nothing stored. OAK validates the same rules before relaying.
+- Replacing the selection is just another `POST` — this is how an operator rotates a key or switches provider.
 
 ### `POST /v1/code/credentials/delete` — `{ "backend": "claude" }`
 
-Remove the stored key for that backend.
+Remove the stored credential for that backend.
 
 > Transport: if the agent is on another host, serve it over **HTTPS** — the key crosses the network on
 > `POST /v1/code/credentials`. The agent must never log the key or return it from any endpoint.
@@ -91,3 +106,30 @@ Remove the stored key for that backend.
 `CODE_INCIDENT_FIX` (an OAK tool) forwards a step to `POST /v1/code/incident-fix` on the same agent. The
 step carries the `repoUrl`; the agent resolves it against the repositories it already holds (configured
 above) and works on its own checkout. OAK adds no local path — it holds no checkout.
+
+### Response
+
+```json
+{ "outcome": "PR_CREATED", "prUrl": "https://github.com/acme/widgets/pull/42",
+  "branch": "fix/INC-123", "commitSha": "abc1234",
+  "rationale": "why this change", "detail": "any extra context",
+  "usage": { "inputTokens": 1200, "outputTokens": 300, "totalTokens": 1500,
+             "cacheReadInputTokens": 800, "cacheCreationInputTokens": 0 } }
+```
+
+`usage` (optional) is the model token usage for the run. OAK forwards it **verbatim** under `output.usage`
+for every outcome (a run spends tokens whether it opens a PR, finds no fix, or errors) — keys pass through
+unchanged, so new usage fields need no OAK change.
+
+`outcome` is the agent's **verdict**, and is distinct from a transport error:
+
+| outcome         | meaning                                                   | OAK → platform            |
+|-----------------|-----------------------------------------------------------|---------------------------|
+| `PR_CREATED`    | a fix was proposed as a PR (`prUrl` set)                  | SUCCESS, `fixApplied=true`  |
+| `NO_FIX_NEEDED` | analysed, deliberately changed nothing (`rationale` says why) | SUCCESS, `fixApplied=false` |
+| `ERROR`         | could not do the work — bad input, clone/model failure    | FAILED (`CODE_FIX_ERROR`) |
+
+A **missing/blank** `outcome` is a failure (`CODE_AGENT_NO_OUTCOME`) — the agent must state a verdict.
+`NO_FIX_NEEDED` is **not** `ERROR`: "I looked and nothing needs changing" is a successful step, not a fault.
+Reserve `ERROR` for cases where the agent genuinely couldn't complete the analysis. OAK forwards unknown
+non-`ERROR` outcomes as success (forward-compatible) and adds a human `summary` for the platform to display.
