@@ -42,6 +42,8 @@ import org.slf4j.LoggerFactory;
 public class CodeAgentSettings {
 
     private static final Logger LOG = LoggerFactory.getLogger(CodeAgentSettings.class);
+    /** Last-resort default when neither an override nor config provides a URL (e.g. config absent in tests). */
+    private static final String DEFAULT_BASE_URL = "http://localhost:9030";
 
     @ConfigProperty(name = "oak.data-dir")
     Optional<String> dataDir;
@@ -65,7 +67,7 @@ public class CodeAgentSettings {
     public String baseUrl() {
         final String configured = config == null ? null : config.codeAgent().baseUrl();
         final String effective = override != null && !override.isBlank() ? override : configured;
-        return strip(effective == null || effective.isBlank() ? "http://localhost:9030" : effective);
+        return strip(effective == null || effective.isBlank() ? DEFAULT_BASE_URL : effective);
     }
 
     /** Whether the base URL was overridden from the UI (vs. taken from config). */

@@ -140,10 +140,10 @@ public interface OakConfig {
     }
 
     /**
-     * The local Code Agent — a <b>separate</b> service on the same host that proposes a code fix (as a
-     * pull request) for an incident. OAK only relays the {@code CODE_INCIDENT_FIX} step to it and returns
-     * what it reports; OAK holds no code-fix logic and no GitHub/model credentials — those live entirely
-     * in the code agent.
+     * The Code Agent — a <b>separate</b> service (on the same host as OAK or another host entirely) that
+     * proposes a code fix (as a pull request) for an incident. OAK only relays the {@code CODE_INCIDENT_FIX}
+     * step to it and returns what it reports; OAK holds no code-fix logic and no GitHub/model credentials —
+     * those live entirely in the code agent.
      */
     interface CodeAgent {
 

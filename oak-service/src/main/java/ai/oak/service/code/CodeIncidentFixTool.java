@@ -89,7 +89,7 @@ public class CodeIncidentFixTool implements Tool {
 
     @Override
     public String description() {
-        return "Relay an incident to the local Code Agent, which proposes a fix as a pull request (a human reviews " +
+        return "Relay an incident to the Code Agent, which proposes a fix as a pull request (a human reviews " +
                 "and merges). OAK only forwards the request; it holds no code-fix logic or credentials.";
     }
 
@@ -108,6 +108,8 @@ public class CodeIncidentFixTool implements Tool {
     public ToolResult execute(final Map<String, Object> input) {
         final String url = baseUrl() + PATH;
         try {
+            // Forward the whole step input verbatim (incl. the nested analysis) so new platform fields need no
+            // change here. NON_NULL serialization omits null-valued fields — lossless, since null carries no data.
             final String body = mapper.writeValueAsString(input == null ? Map.of() : input);
             final HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(REQUEST_TIMEOUT)
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();

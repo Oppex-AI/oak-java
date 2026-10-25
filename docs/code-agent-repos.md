@@ -6,9 +6,11 @@ holds the git / GitHub credentials. **OAK only manages settings** — where the 
 repositories it should pull — and relays those to the agent over HTTP. OAK stores no checkout and no
 credentials.
 
-OAK reaches the agent at a base URL that is an operator setting (`oak.code-agent.base-url`, overridable
-from the management UI under **Settings → Code Agent**; default `http://localhost:9030`). The endpoints
-below are what the agent implements; OAK is only a client.
+The Code Agent is a **pluggable component**: OAK ships only this client and the contract below, so any
+service that implements these endpoints can act as the agent — there is no built-in or required
+implementation. OAK reaches it at a base URL that is an operator setting (`oak.code-agent.base-url`,
+overridable from the management UI under **Settings → Code Agent**; default `http://localhost:9030`). The
+endpoints below are what the agent implements; OAK is only a client.
 
 ## Repository management
 
