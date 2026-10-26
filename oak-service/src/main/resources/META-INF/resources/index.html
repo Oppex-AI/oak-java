@@ -210,6 +210,41 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
             <span></span><span><button class="btn" id="dbSaveBtn">Save database</button> <span id="dbMsg" class="sub"></span></span>
           </div>
         </div>
+
+        <h2 class="section">Code Agent</h2>
+        <div class="sub" style="margin:-8px 0 12px">The <b>Code Agent</b> is a separate service — on this host or
+          another — that proposes code fixes as pull requests. It does all code handling: it pulls the repositories
+          and holds the git/GitHub credentials. <b>OAK only manages settings</b>: where the agent is, and which
+          repositories it should pull. OAK stores no code and no credentials.</div>
+        <div class="card">
+          <h2>Where the agent runs</h2>
+          <div class="kv">
+            <label for="agent_url">Base URL</label><input id="agent_url" class="mono" placeholder="http://localhost:9030  or  https://code-agent.internal:9030">
+            <span></span><span><button class="btn" id="agentSaveBtn">Save</button> <span id="agentMsg" class="sub"></span></span>
+          </div>
+          <div id="agentStatus" class="sub" style="margin:10px 0 0"></div>
+        </div>
+        <div class="card">
+          <h2>Model backends</h2>
+          <div class="sub" style="margin:-4px 0 10px">How the agent authenticates to the model. Pick a
+            <b>provider</b> — an Anthropic API key, or keyless <span class="mono">AWS Bedrock</span> (the agent uses its
+            host's AWS role/SSO, no key). <b>Stored by the Code Agent, not OAK</b> — OAK forwards your choice and never
+            keeps or shows a key back; update it here at any time. If the agent is on another host, use an
+            <span class="mono">https://</span> base URL so the key isn't sent in the clear.</div>
+          <div id="modelcreds" class="kv"><div class="empty">Loading…</div></div>
+          <div id="credMsg" class="sub" style="margin:10px 0 0"></div>
+        </div>
+        <div class="card">
+          <h2>Repositories</h2>
+          <div class="sub" style="margin:-4px 0 10px">Add a repository and the agent pulls it; OAK confirms when it's
+            <b>ready</b>. A repo the agent can't reach shows as <i>failed</i> — fix its access on the agent's side.</div>
+          <div id="coderepos"><div class="empty">Loading…</div></div>
+          <div class="kv" style="margin-top:12px">
+            <label for="repo_url">Repository URL</label><input id="repo_url" class="mono" placeholder="https://github.com/acme/widgets.git  or  git@github.com:acme/widgets.git">
+            <label for="repo_branch">Branch (optional)</label><input id="repo_branch" class="mono" placeholder="blank = repository default">
+            <span></span><span><button class="btn" id="repoSaveBtn">Add &amp; pull</button> <span id="repoMsg" class="sub"></span></span>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -488,6 +523,9 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
       } catch (e) { $("setinfo").innerHTML = '<dd class="empty">Could not load: ' + esc(e.message) + "</dd>"; }
       loadToolSettings();
       loadDbConnections();
+      loadCodeAgent();
+      loadModelCreds();
+      loadCodeRepos();
     }
 
     // ---- database connections ----
@@ -558,6 +596,158 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
         ["db_id", "db_user", "db_name", "db_pass", "db_host", "db_port", "db_region"].forEach(i => $(i).value = "");
         $("dbMsg").textContent = "Saved."; loadDbConnections();
       } catch (e) { $("dbMsg").textContent = "Save failed: " + e.message; }
+    }
+
+    // ---- code agent ----
+    async function loadCodeAgent() {
+      try {
+        const d = await (await fetch("api/code-agent", { cache: "no-store" })).json();
+        if (!$("agent_url").value) $("agent_url").value = d.baseUrl || "";
+        const src = d.overridden ? "set here" : "from configuration";
+        $("agentStatus").innerHTML = d.reachable
+          ? `<span class="yes">reachable</span> at <span class="mono">${esc(d.baseUrl)}</span> (${src})`
+          : `<span class="no">not reachable</span> at <span class="mono">${esc(d.baseUrl)}</span> (${src})`
+            + (d.error ? ` — ${esc(d.error)}` : "");
+      } catch (e) { $("agentStatus").textContent = "Could not load: " + e.message; }
+    }
+    async function saveAgentUrl() {
+      const baseUrl = $("agent_url").value.trim();
+      if (!baseUrl) { $("agentMsg").textContent = "Enter the agent's base URL."; return; }
+      $("agentMsg").textContent = "Saving…";
+      try {
+        const d = await (await fetch("api/code-agent", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseUrl }) })).json();
+        $("agentMsg").textContent = d.ok ? "Saved." : (d.error || "failed");
+        if (d.ok) { loadCodeAgent(); loadModelCreds(); loadCodeRepos(); }
+      } catch (e) { $("agentMsg").textContent = "Save failed: " + e.message; }
+    }
+
+    // ---- model backends (credentials live in the agent; OAK forwards the provider choice write-only) ----
+    // A provider pins a backend + whether it needs a key. Add { backend:"codex", provider:"codex-api-key", … }
+    // here when we surface Codex — the relay already accepts it. aws-bedrock is keyless (host AWS role/SSO).
+    const MODEL_PROVIDERS = [
+      { backend: "claude", provider: "claude-api-key", label: "Anthropic API key", key: true, ph: "sk-ant-…" },
+      { backend: "claude", provider: "aws-bedrock", label: "AWS Bedrock — keyless (host AWS role/SSO)", key: false },
+    ];
+    const CRED_BACKENDS = [{ backend: "claude", label: "Claude" }];
+    async function loadModelCreds() {
+      const state = {};
+      try {
+        const d = await (await fetch("api/code-agent/credentials", { cache: "no-store" })).json();
+        if (!d.ok) { $("modelcreds").innerHTML = '<div class="empty">Code agent unavailable: ' + esc(d.error || "unknown") + "</div>"; return; }
+        (d.configured || []).forEach(c => { state[c.backend] = { provider: c.provider, configured: !!c.configured }; });
+      } catch (e) { $("modelcreds").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; return; }
+      $("modelcreds").innerHTML = CRED_BACKENDS.map(b => {
+        const provs = MODEL_PROVIDERS.filter(p => p.backend === b.backend);
+        const cur = state[b.backend] || {};
+        const set = !!cur.configured;
+        const selected = provs.find(p => p.provider === cur.provider) ? cur.provider : provs[0].provider;
+        const meta = provs.find(p => p.provider === selected) || provs[0];
+        const opts = provs.map(p => `<option value="${p.provider}" ${p.provider === selected ? "selected" : ""}>${esc(p.label)}</option>`).join("");
+        const ph = meta.key ? (set ? "configured — blank keeps it" : esc(meta.ph || "")) : "not needed for this provider";
+        const status = set ? `<span class="yes">configured · ${esc(cur.provider || "")}</span>` : '<span class="no">not set</span>';
+        const clear = set ? ` <button class="btn ghost" onclick="clearCred('${b.backend}')">Clear</button>` : "";
+        return `<label for="prov_${b.backend}">${esc(b.label)} provider</label>
+          <select id="prov_${b.backend}" onchange="onProvChange('${b.backend}')">${opts}</select>
+          <label for="cred_${b.backend}">API key</label>
+          <input id="cred_${b.backend}" type="password" placeholder="${ph}"${meta.key ? "" : " disabled"}>
+          <span></span><span><button class="btn" onclick="saveCred('${b.backend}')">Save</button>${clear} ${status}</span>`;
+      }).join("");
+    }
+    // Enable the key field only for a key-based provider; a keyless one (Bedrock) sends no apiKey.
+    function onProvChange(backend) {
+      const meta = MODEL_PROVIDERS.find(p => p.provider === $("prov_" + backend).value);
+      const key = $("cred_" + backend);
+      key.disabled = !meta.key;
+      if (!meta.key) key.value = "";
+      key.placeholder = meta.key ? (meta.ph || "") : "not needed for this provider";
+    }
+    async function saveCred(backend) {
+      const provider = $("prov_" + backend).value;
+      const meta = MODEL_PROVIDERS.find(p => p.provider === provider);
+      const apiKey = $("cred_" + backend).value;
+      if (meta.key && !apiKey) { $("credMsg").textContent = "Enter the API key."; return; }
+      $("credMsg").textContent = "Saving to the agent…";
+      try {
+        const body = meta.key ? { backend, provider, apiKey } : { backend, provider };
+        const d = await (await fetch("api/code-agent/credentials", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body) })).json();
+        $("cred_" + backend).value = "";
+        $("credMsg").textContent = d.ok ? "Saved to the Code Agent." : (d.error || "failed");
+        if (d.ok) loadModelCreds();
+      } catch (e) { $("credMsg").textContent = "Save failed: " + e.message; }
+    }
+    async function clearCred(backend) {
+      if (!confirm(`Remove the ${backend} API key from the Code Agent?`)) return;
+      try {
+        const d = await (await fetch("api/code-agent/credentials/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backend }) })).json();
+        $("credMsg").textContent = d.ok ? "Removed." : (d.error || "failed");
+        loadModelCreds();
+      } catch (e) { $("credMsg").textContent = "Remove failed: " + e.message; }
+    }
+
+    // ---- code repositories (held by the agent) ----
+    // [cssClass, label] per pull status. CLONING is a live state → the loader polls until it settles.
+    const REPO_STATUS = {
+      READY: ["b-ok", "ready ✓"], CLONING: ["b-warn", "pulling…"],
+      FAILED: ["b-err", "failed"], NONE: ["b-idle", "queued"]
+    };
+    let repoPoll = null;
+    function stopRepoPoll() { if (repoPoll) { clearInterval(repoPoll); repoPoll = null; } }
+    async function loadCodeRepos() {
+      try {
+        const res = await (await fetch("api/code-repos", { cache: "no-store" })).json();
+        if (!res.ok) {
+          stopRepoPoll();
+          $("coderepos").innerHTML = '<div class="empty">Code agent unavailable: ' + esc(res.error || "unknown error")
+            + '. Check the base URL above.</div>';
+          return;
+        }
+        const repos = res.repos || {};
+        const slugs = Object.keys(repos).sort();
+        $("coderepos").innerHTML = slugs.length ? `<table><thead><tr>
+          <th>Repository</th><th>Branch</th><th>Status</th><th>Commit</th><th>Detail</th><th></th></tr></thead>
+          <tbody>${slugs.map(s => repoRow(s, repos[s])).join("")}</tbody></table>`
+          : '<div class="empty">No repository configured. Add one below and the agent will pull it.</div>';
+        // Keep polling while any pull is in flight, then stop.
+        const pulling = slugs.some(s => repos[s].status === "CLONING");
+        if (pulling && !repoPoll) repoPoll = setInterval(loadCodeRepos, 2000);
+        if (!pulling) stopRepoPoll();
+      } catch (e) { stopRepoPoll(); $("coderepos").innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + "</div>"; }
+    }
+    function repoRow(slug, r) {
+      const [cls, label] = REPO_STATUS[r.status] || ["b-idle", (r.status || "").toLowerCase()];
+      const commit = r.commit ? esc(String(r.commit).slice(0, 10)) : "—";
+      const re = r.status === "CLONING" ? "" : `<button class="btn ghost" onclick="refreshRepo('${esc(slug)}')">Re-pull</button> `;
+      return `<tr><td class="mono">${esc(r.url)}</td><td>${esc(r.branch || "default")}</td>
+        <td><span class="badge ${cls}">${label}</span></td><td class="mono">${commit}</td>
+        <td class="sub">${esc(r.detail || "")}</td>
+        <td style="white-space:nowrap">${re}<button class="btn ghost" onclick="deleteRepo('${esc(slug)}')">Remove</button></td></tr>`;
+    }
+    async function saveRepo() {
+      const url = $("repo_url").value.trim();
+      if (!url) { $("repoMsg").textContent = "Enter a repository URL."; return; }
+      $("repoMsg").textContent = "Asking the agent to pull…";
+      try {
+        const d = await (await fetch("api/code-repos", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, branch: $("repo_branch").value.trim() || null }) })).json();
+        if (!d.ok) { $("repoMsg").textContent = d.error || "failed"; return; }
+        $("repo_url").value = ""; $("repo_branch").value = "";
+        $("repoMsg").textContent = "Pulling — OAK will confirm when the repo is ready.";
+        loadCodeRepos();
+      } catch (e) { $("repoMsg").textContent = "Save failed: " + e.message; }
+    }
+    async function refreshRepo(slug) {
+      await fetch("api/code-repos/refresh", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }) });
+      loadCodeRepos();
+    }
+    async function deleteRepo(slug) {
+      if (!confirm(`Remove "${slug}" from the Code Agent?\n\nThis also deletes the agent's local checkout of the repository.`)) return;
+      await fetch("api/code-repos/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }) });
+      loadCodeRepos();
     }
 
     // Editable fields per group; the store itself is generic. AWS also shows a read-only External ID.
@@ -727,6 +917,8 @@ ALTER ROLE oak_runner WITH PASSWORD 'strong-password';</div>
     function refreshActive() { show(views.find(v => $(v).classList.contains("active")) || "dashboard"); }
     $("refreshBtn").onclick = refreshActive;
     $("dbSaveBtn").onclick = saveDb;
+    $("repoSaveBtn").onclick = saveRepo;
+    $("agentSaveBtn").onclick = saveAgentUrl;
     show(location.hash.slice(1) || "dashboard");
     // Gentle auto-refresh of the Dashboard every 5 minutes; use the Refresh button for an immediate update.
     setInterval(() => { if ($("dashboard").classList.contains("active")) loadDashboard(); }, 300000);
