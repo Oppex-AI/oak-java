@@ -52,7 +52,7 @@
     <!-- Dev process: Spotless (Oppex Eclipse formatter + Apache header) and Checkstyle. -->
     <spotless.version>2.43.0</spotless.version>
     <checkstyle.plugin.version>3.3.1</checkstyle.plugin.version>
-    <checkstyle.version>10.12.3</checkstyle.version>
+    <checkstyle.version>14.3.0</checkstyle.version>
   </properties>
 
   <dependencyManagement>
