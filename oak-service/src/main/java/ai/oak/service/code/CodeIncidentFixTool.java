@@ -178,8 +178,10 @@ public class CodeIncidentFixTool implements Tool {
             return pr != null && !pr.isBlank() ? "Fix proposed as a pull request: " + pr : "Fix proposed as a pull request.";
         }
         if ("NO_FIX_NEEDED".equals(outcome)) {
-            final String why = firstNonBlank(str(body.get("rationale")), str(body.get("detail")), "");
-            return why.isBlank() ? "No code change needed." : "No code change needed — " + why;
+            // Short headline only. The full reasoning is carried verbatim in `rationale` (and `detail`),
+            // which the platform renders separately — embedding it here too made the whole analysis
+            // render twice on the incident note.
+            return "No code change needed.";
         }
         return firstNonBlank(str(body.get("detail")), str(body.get("rationale")), outcome);
     }

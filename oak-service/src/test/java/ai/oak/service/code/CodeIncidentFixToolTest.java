@@ -83,8 +83,10 @@ class CodeIncidentFixToolTest {
             assertTrue(r.success(), "a deliberate no-op is a successful analysis, not a failed step");
             assertEquals("NO_FIX_NEEDED", r.data().get("outcome"));
             assertEquals(Boolean.FALSE, r.data().get("fixApplied"));
-            assertTrue(String.valueOf(r.data().get("summary")).startsWith("No code change needed —"),
-                    String.valueOf(r.data().get("summary")));
+            // Summary is a short headline only — no embedded rationale (that would double-render on the note).
+            assertEquals("No code change needed.", r.data().get("summary"));
+            // The reasoning is still carried verbatim, separately, so nothing is lost.
+            assertEquals("OPD-880 already moved the write out of the transaction", r.data().get("rationale"));
         } finally {
             server.stop(0);
         }
