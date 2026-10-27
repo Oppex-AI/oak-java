@@ -53,8 +53,13 @@ public class CodeIncidentFixTool implements Tool {
     private static final String CAPABILITY = "CODE_INCIDENT_FIX";
     private static final String PATH = "/v1/code/incident-fix";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    // A code fix (clone, analyse, generate, open a PR) can take a while — generous request budget.
-    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(5);
+    // A code fix is clone + analyse + generate + BUILD/VALIDATE + open a PR, run synchronously by the
+    // agent. The build dominates: a full `-P local install` on the oppex-ai monorepo ran ~21 min on a
+    // 2-vCPU host, so a 5-min budget timed out while the agent kept going and opened the PR — OAK then
+    // reported CODE_AGENT_UNREACHABLE for a run that actually succeeded. Keep this comfortably above the
+    // worst-case build. (The real fix is an async incident-fix — agent returns a job id, OAK polls —
+    // which this generous budget is a stopgap for.)
+    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(45);
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {
     };
 
